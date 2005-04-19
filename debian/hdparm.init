@@ -1,0 +1,173 @@
+#!/bin/sh
+
+set -e
+
+case $1 in
+  start|restart|reload|force-reload)
+    ;;
+  stop) 
+    exit 0
+    ;;
+  *)
+    echo "Usage: $0 {stop|start|restart|reload|force-reload}" >&2
+    exit 1
+    ;;
+esac
+
+echo -n "Setting disc parameters:"
+
+DISC=
+DEFAULT=
+OPTIONS=
+DEF_QUIET=
+OPT_QUIET=
+
+set_option() {
+  if test -n "$DISC"; then
+    NEW_OPT=
+    for i in $OPTIONS; do
+      if test x${i%${i#??}} != x${1%${1#??}}; then
+        NEW_OPT="$NEW_OPT $i"
+      else
+        NEW_OPT=${NEW_OPT%-q}
+      fi
+    done
+    OPTIONS="$NEW_OPT $OPT_QUIET $1"
+  else
+    NEW_DEF=
+    for i in $DEFAULT; do
+      if test x${i%${i#??}} != x${1%${1#??}}; then
+        NEW_DEF="$NEW_DEF $i"
+      else
+        NEW_DEF=${NEW_DEF%-q}
+      fi
+    done
+    DEFAULT="$NEW_DEF $DEF_QUIET $1"
+  fi
+}
+
+eval_value() {
+  case $1 in
+    off|0) 
+      set_option "$2"0
+       ;;
+    on|1) 
+      set_option "$2"1
+      ;;
+    *) 
+      return 1
+      ;;
+  esac
+}
+
+# Get blocks as far as the drive's write cache.
+/bin/sync
+
+egrep -v '^[[:space:]]*(#|$)' /etc/hdparm.conf | while read KEY SEP VALUE; do
+  case $SEP in
+    '{')
+       DISC=$KEY
+       OPTIONS=$DEFAULT
+       OPT_QUIET=$DEF_QUIET
+       ;;
+    =)
+       case $KEY in
+         read_ahead_sect) 
+	   set_option -a$VALUE
+	   ;;
+	 lookahead) 
+	   eval_value $VALUE -A
+	   ;;
+	 bus) 
+	   eval_value $VALUE -b
+	   ;;
+	 apm) 
+	   set_option -B$VALUE
+	   ;;
+	 io32_support) 
+	   set_option -c$VALUE
+	   ;;
+	 dma) 
+	   eval_value $VALUE -d
+	   ;;
+	 defect_mana) 
+	   eval_value $VALUE -D
+	   ;;
+	 cd_speed) 
+	   set_option -E$VALUE
+	   ;;
+	 mult_sect_io) 
+	   set_option -m$VALUE
+	   ;;
+	 prefetch_sect) 
+	   set_option -P$VALUE
+	   ;;
+	 read_only) 
+	   eval_value $VALUE -r
+	   ;;
+	 spindown_time) 
+	   set_option -S$VALUE
+	   ;;
+	 interrupt_unmask) 
+	   eval_value $VALUE -u
+	   ;;
+	 write_cache) 
+	   eval_value $VALUE -W
+	   ;;
+	 transfer_mode) 
+	   set_option -X$VALUE
+	   ;;
+	 acoustic_management)
+	   set_option -M$VALUE
+	   ;;
+	 *)
+	   echo "unknown option $KEY"
+	   exit 1
+	   ;;
+       esac
+    ;;
+    "")
+       case $KEY in
+         })
+	   if [ -z "$DISC" ]; then
+	     echo "No disk enabled. Exiting"
+	     exit 1
+	   fi
+	   if [ -n "$OPTIONS" ]; then
+	     # Flush the drive's internal write cache to the disk.
+	     /sbin/hdparm -q -f $DISC
+
+	     /sbin/hdparm $OPTIONS $DISC
+	     echo -n " $DISC,"
+	   fi       
+           ;;
+         quiet)
+	   if [ -n "$DISC" ]; then
+	     OPT_QUIET=-q
+	   else
+	     DEF_QUIET=-q
+	   fi
+           ;;
+         standby) 
+           set_option -y
+	   ;;
+         sleep) 
+           set_option -Y
+	   ;;
+         disable_seagate) 
+           set_option -Z
+	   ;;
+         *)
+	   echo "unknown option $KEY"
+	   exit 1
+	   ;;
+       esac
+	   ;;
+   *)
+     echo "unknown separator $SEP"
+     exit 1
+     ;;
+  esac
+done
+
+echo " done."
