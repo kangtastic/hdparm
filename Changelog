@@ -1,3 +1,5 @@
+hdparm-6.1
+	- fix BLKGETSIZE bug introduced in 6.0
 hdparm-6.0
 	- correct usage of BLKGETSIZE64 (returns bytes instead of sectors)
 	- Added ATA Security switches (Benjamin Benz bbe[AT]heise[DOT]de)

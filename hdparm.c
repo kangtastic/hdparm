@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v6.0"
+#define VERSION "v6.1"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -439,9 +439,10 @@ static int do_blkgetsize (int fd, unsigned long long *blksize64)
 		*blksize64 /= 512;
 		return 0;
 	}
-	rc = ioctl(fd, BLKGETSIZE64, &blksize32);	// returns sectors
+	rc = ioctl(fd, BLKGETSIZE, &blksize32);	// returns sectors
 	if (rc)
 		perror(" BLKGETSIZE failed");
+	*blksize64 = blksize32;
 	return rc;
 }
 
