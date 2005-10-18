@@ -1,3 +1,5 @@
+hdparm-6.3
+	- added reporting of ATA revision numbers > 7
 hdparm-6.2
 	- eliminated short form (-F) of --security-freeze flag
 	- completely revamped ATA Security Commands

@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v6.2"
+#define VERSION "v6.3"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -291,10 +291,15 @@ static void dump_identity (const struct hd_driveid *id)
 			printf("%s: ", minor_str[id->minor_rev_num]);
 		else
 			printf("unknown: ");
-		if (id->major_rev_num < 31) {
-			for (i=0; i <= 15; i++) {
+		if (id->major_rev_num != 0x0000 &&  /* NOVAL_0 */
+		    id->major_rev_num != 0xFFFF) {  /* NOVAL_1 */
+			/* through ATA/ATAPI-7 is currently defined--
+			 * increase this value as further specs are 
+			 * standardized (though we can guess safely to 15)
+			 */
+			for (i=0; i <= 7; i++) {
 				if (id->major_rev_num & (1<<i))
-					printf(" %u", i);
+					printf(" ATA/ATAPI-%u", i);
 			}
 		}
 	}

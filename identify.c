@@ -233,7 +233,7 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 /* word 81: minor version number */
 #define MINOR_MAX		0x1f
 const char *minor_str[] = {				/* word 81 value: */
-	"device does not report version",		/* 0x0000	*/
+	"Unspecified",					/* 0x0000	*/
 	"ATA-1 X3T9.2 781D prior to revision 4",	/* 0x0001	*/
 	"ATA-1 published, ANSI X3.221-1994",		/* 0x0002	*/
 	"ATA-1 X3T9.2 781D revision 4",			/* 0x0003	*/
@@ -262,9 +262,9 @@ const char *minor_str[] = {				/* word 81 value: */
 	"Reserved",					/* 0x001a	*/
 	"ATA/ATAPI-6 T13 1410D revision 2",		/* 0x001b	*/
 	"ATA/ATAPI-6 T13 1410D revision 1",		/* 0x001c	*/
-	"reserved"					/* 0x001d	*/
-	"reserved"					/* 0x001e	*/
-	"reserved"					/* 0x001f-0xfffe*/
+	"Reserved"					/* 0x001d	*/
+	"Reserved"					/* 0x001e	*/
+	"Reserved"					/* 0x001f-0xfffe*/
 };
 const char actual_ver[] = { 
 			/* word 81 value: */
