@@ -1,4 +1,4 @@
-.TH HDPARM 8 "April 2005" "Version 6.1"
+.TH HDPARM 8 "October 2005" "Version 6.2"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -28,7 +28,7 @@ Also, many IDE drives also have a separate built-in read-ahead function,
 which alleviates the need for a filesystem read-ahead in many situations.
 .TP
 .I -A
-Disable/enable the IDE drive's read-lookahead feature (usually ON by default).
+Disable/enable the IDE drive\'s read-lookahead feature (usually ON by default).
 Usage:
 .B -A0
 (disable) or
@@ -185,14 +185,14 @@ and that no error logs (kernel messages) are generated in the process
 (look in /var/adm/messages on most systems).
 .TP
 .I -K
-Set the drive's keep_features_over_reset flag.  Setting this enables
+Set the drive\'s keep_features_over_reset flag.  Setting this enables
 the drive to retain the settings for
 .I -APSWXZ
 over a soft reset (as done during the error recovery sequence).
 Not all drives support this feature.
 .TP
 .I -L
-Set the drive's doorlock flag.  Setting this to
+Set the drive\'s doorlock flag.  Setting this to
 .B 1
 will lock the door mechanism of some removable hard drives
 (eg. Syquest, ZIP, Jazz..), and setting it to
@@ -237,7 +237,9 @@ have the ability to speed down the head movements to reduce their noise output.
 The possible values are between 0 and 254. 128 is the most quiet (and therefore
 slowest) setting and 254 the fastest (and loudest). Some drives have only two 
 levels (quiet / fast), while others may have different levels between 128 and 254.
-.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
+At the moment, most drives only support 3 options, off, quiet, and fast.
+These have been assigned the values 0, 128, and 254 at present, respectively,
+but integer space has been incorporated for future expansion, should this change.
 .TP
 .I -n
 Get or set the "ignore write errors" flag in the driver.
@@ -260,7 +262,7 @@ and an unsuccessful outcome may result in
 .I severe filesystem corruption!
 .TP
 .I -P
-Set the maximum sector count for the drive's internal prefetch mechanism.
+Set the maximum sector count for the drive\'s internal prefetch mechanism.
 Not all drives support this feature.
 .TP
 .I -q
@@ -349,7 +351,7 @@ Get/set interrupt-unmask flag for the drive.  A setting of
 .B 1
 permits the
 driver to unmask other interrupts during processing of a disk interrupt,
-which greatly improves Linux's responsiveness and eliminates "serial port
+which greatly improves Linux\'s responsiveness and eliminates "serial port
 overrun" errors.
 .B Use this feature with caution:
 some drive/controller combinations do
@@ -378,7 +380,7 @@ Intended for use with hardware made specifically for hot-swapping (very rare!).
 Use with knowledge and
 .B extreme caution
 as this can easily hang or damage your system.
-The hdparm source distribution includes a 'contrib' directory with
+The hdparm source distribution includes a \'contrib\' directory with
 some user-donated scripts for hot-swapping on the UltraBay of a ThinkPad 600E.
 Use at your own risk.
 .TP
@@ -392,7 +394,7 @@ It exists for unlikely situations where a reboot might otherwise be
 required to get a confused drive back into a useable state.
 .TP
 .I -W
-Disable/enable the IDE drive's write-caching feature
+Disable/enable the IDE drive\'s write-caching feature
 (default state is undeterminable; manufacturer/model specific).
 .TP
 .I -x 
@@ -409,7 +411,7 @@ is used to select multiword DMA mode2 transfers and
 is used to select simple mode 1 DMA transfers.
 With systems which support UltraDMA burst timings,
 .I -X udma2
-is used to select UltraDMA mode2 transfers (you'll need to prepare
+is used to select UltraDMA mode2 transfers (you\'ll need to prepare
 the chipset for UltraDMA beforehand).
 Apart from that, use of this flag is
 .I seldom necessary
@@ -430,7 +432,7 @@ transfer modes used by Linux, this value is simply the desired
 PIO mode number plus 8.
 Thus, a value of 09 sets PIO mode1, 10 enables PIO mode2,
 and 11 selects PIO mode3.
-Setting 00 restores the drive's "default" PIO mode, and 01 disables IORDY.
+Setting 00 restores the drive\'s "default" PIO mode, and 01 disables IORDY.
 For multiword DMA, the value used is the desired DMA mode number
 plus 32.  for UltraDMA, the value is the desired UltraDMA mode number
 plus 64.
@@ -461,39 +463,70 @@ Disable the automatic power-saving function of certain Seagate drives
 (ST3xxx models?), to prevent them from idling/spinning-down
 at inconvenient times.
 .TP
-.B ATA Security Feature Set
+.SH ATA Security Feature Set
+.PP
+These switches are DANGEROUS to experiment with, and might not work with every
+kernel.
+.B USE AT YOUR OWN RISK.
 .TP
-These switches are DANGEROUS to experiment with, and might not work with every kernel.
+.I --security-help             
+Display terse usage info for all of the --security-* flags.
 .TP
-.I -F, --security-freeze             
-Freeze the drive's security settings.
+.I --security-freeze             
+Freeze the drive\'s security settings.
 The drive does not accept any security commands until next power-on reset.
 Use this function in combination with --security-unlock to protect drive
 from any attempt to set a new password. Can be used standalone, too.
 .TP
 .I --security-unlock PWD 
-Unlock the drive, using password PWD (DANGEROUS).
+Unlock the drive, using password PWD.
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
-The applicable drive password is selected with the --security-mode switch.
+The applicable drive password is selected with the --user-master switch.
+.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-set-pass PWD 
 Lock the drive, using password PWD (Set Password) (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
-The applicable drive password is selected with the --security-mode switch.
+The applicable drive password is selected with the --user-master switch and the
+applicable security mode with the --security-mode switch.
+.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-disable PWD 
-Disable drive locking, using password PWD (DANGEROUS).
+Disable drive locking, using password PWD.
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
-The applicable drive password is selected with the --security-mode switch.
+The applicable drive password is selected with the --user-master switch.
+.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
+.TP
+.I --security-erase PWD
+Erase (locked) drive, using password PWD (DANGEROUS).
+Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
+The applicable drive password is selected with the --user-master switch.
+.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
+.TP
+.I --security-erase-enhanced PWD
+Enhanced erase (locked) drive, using password PWD (DANGEROUS).
+Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
+The applicable drive password is selected with the --user-master switch.
+.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
+.TP
+.I --user-master USER
+Specifies which password (user/master) to select.
+.B Defaults to master.
+Only useful in combination with --security-unlock, --security-set-pass,
+--security-disable, --security-erase or --security-erase-enhanced.
+        u       user password
+        m       master password
+
+.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-mode MODE 
-Specifies which password (user/master) to select,
-and which security mode (high/maximum) to set.
-Only useful in combination with --security-unlock, --security-set-pass, or --security-disable
-        u       user password, high security
-        U       user password, maximum security
-        m       master password, high security
-        M       master password, maximum security
+Specifies which security mode (high/maximum) to set.
+.B Defaults to high.
+Only useful in combination with --security-set-pass.
+        h       high security
+        m       maximum security
+
+.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .SH BUGS
 As noted above, the
 .B -m sectcount
@@ -505,11 +538,24 @@ a few drive/controller combinations are not 100% compatible.  Filesystem
 corruption may result.  Backup everything before experimenting!
 .PP
 Some options (eg. -r for SCSI) may not work with old kernels as 
-necessary ioctl()'s were not supported.
+necessary ioctl()\'s were not supported.
 .PP
 Although this utility is intended primarily for use with (E)IDE hard disk
 devices, several of the options are also valid (and permitted) for use with 
 SCSI hard disk devices and MFM/RLL hard disks with XT interfaces.
+.PP
+The Linux kernel up until 2.6.12 (and probably later) doesn\'t handle the
+security unlock and disable commands gracefully and will segfault and in some
+cases even panic. The security commands however might indeed have been executed
+by the drive. This poor kernel behaviour makes the PIO data security commands
+rather useless at the moment.
+.PP
+Note that the "security erase" and "security disable" commands have been
+implemented as two consecutive PIO data commands and will not succeed on a
+locked drive because the second command will not be issued after the segfault.
+See the code for hints how patch it to work around this problem. Despite the
+segfault it is often still possible to run two instances of hdparm
+consecutively and issue the two necessary commands that way.
 .SH AUTHOR
 .B hdparm
 has been written by Mark Lord <mlord@pobox.com>, the primary developer and
@@ -517,6 +563,12 @@ maintainer of the (E)IDE driver for Linux, with suggestions from many netfolk.
 .PP
 The disable Seagate auto-powersaving code
 is courtesy of Tomi Leppikangas(tomilepp@paju.oulu.fi).
+.PP
+Security freeze command by Benjamin Benz <bbe@heise.de>, 2005.
+.PP
+PIO data out security commands by Leonard den Ottolander
+<leonard den ottolander nl>, 2005.
+Parts by Benjamin Benz <bbe@heise.de>.
 .SH SEE ALSO
 .B AT Attachment Interface for Disk Drives,
 ANSI ASC X3T9.2 working draft, revision 4a, April 19, 1993.

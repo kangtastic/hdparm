@@ -30,9 +30,9 @@ install: all hdparm.8
 	if [ -f $(DESTDIR)$(sbindir)/hdparm ]; then rm -f $(DESTDIR)$(sbindir)/hdparm ; fi
 	if [ -f $(DESTDIR)$(mandir)/man8/hdparm.8 ]; then rm -f $(DESTDIR)$(mandir)/man8/hdparm.8 ;\
 	elif [ -f $(DESTDIR)$(oldmandir)/man8/hdparm.8 ]; then rm -f $(DESTDIR)$(oldmandir)/man8/hdparm.8 ; fi
-	$(INSTALL_PROGRAM) hdparm $(DESTDIR)$(sbindir)/hdparm
-	if [ -d $(DESTDIR)$(mandir) ]; then $(INSTALL_DATA) hdparm.8 $(DESTDIR)$(mandir)/man8/hdparm.8 ;\
-	elif [ -d $(DESTDIR)$(oldmandir) ]; then $(INSTALL_DATA) hdparm.8 $(DESTDIR)$(oldmandir)/man8/hdparm.8 ; fi
+	$(INSTALL_PROGRAM) -D hdparm $(DESTDIR)$(sbindir)/hdparm
+	if [ -d $(DESTDIR)$(mandir) ]; then $(INSTALL_DATA) -D hdparm.8 $(DESTDIR)$(mandir)/man8/hdparm.8 ;\
+	elif [ -d $(DESTDIR)$(oldmandir) ]; then $(INSTALL_DATA) -D hdparm.8 $(DESTDIR)$(oldmandir)/man8/hdparm.8 ; fi
 
 clean:
 	rm -f hdparm *.o core

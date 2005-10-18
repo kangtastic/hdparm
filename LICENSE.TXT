@@ -1,3 +1,5 @@
+BSD-Style Open Source License:
+
 You may freely use, modify, and redistribute the hdparm program,
 as either binary or source, or both.
 

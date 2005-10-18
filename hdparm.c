@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v6.1"
+#define VERSION "v6.2"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -85,7 +85,8 @@ static unsigned long set_seagate  = 0, get_seagate  = 0;
 static unsigned long set_standbynow = 0, get_standbynow = 0;
 static unsigned long set_sleepnow   = 0, get_sleepnow   = 0;
 static unsigned long set_freeze   = 0;
-static unsigned long security_master=0, security_mode=0;
+static unsigned long security_master = 1, security_mode = 0;
+static unsigned long enhanced_erase = 0;
 static unsigned long set_security   = 0;
 
 #ifndef WIN_SECURITY_FREEZE_LOCK
@@ -98,7 +99,7 @@ static unsigned long set_security   = 0;
 #endif
 static unsigned int security_command = WIN_SECURITY_UNLOCK;
 
-static char security_password[64];
+static char security_password[33];
 static unsigned long get_powermode  = 0;
 static unsigned long set_apmmode = 0, get_apmmode= 0, apmmode = 0;
 #endif
@@ -826,7 +827,6 @@ void process_dev (char *devname)
 			perror(" HDIO_SET_KEEPSETTINGS failed");
 	}
 #endif /* HDIO_GET_KEEPSETTINGS */
-#ifdef HDIO_DRIVE_CMD
 	if (set_doorlock) {
 		unsigned char args[4] = {0,0,0,0};
 		args[0] = doorlock ? WIN_DOORLOCK : WIN_DOORUNLOCK;
@@ -963,35 +963,34 @@ void process_dev (char *devname)
 		 && ioctl(fd, HDIO_DRIVE_CMD, &args2))
 			perror(" HDIO_DRIVE_CMD(sleep) failed");
 	}
-#ifdef WIN_SECURITY_UNLOCK
+#ifdef WIN_SECURITY_FREEZE_LOCK
 	if (set_security) {
 #ifndef TASKFILE_OUT
 #define TASKFILE_OUT 4
 #endif
+#ifndef IDE_DRIVE_TASK_OUT
+#define IDE_DRIVE_TASK_OUT 3
+#endif
 #ifndef HDIO_DRIVE_TASKFILE
 #define HDIO_DRIVE_TASKFILE 0x031d
 #endif
+		int err;
 		const char *description;
-		struct request {
-			unsigned char	regs[16];
-			unsigned int	flags;
-			unsigned int	phase;
-			unsigned int	cmd;
-			unsigned long	obytes;
-			unsigned long	ibytes;
-			unsigned char	data[512];
+		struct request_s {
+			ide_task_request_t req	__attribute__((packed));
+			char data[512]		__attribute__((packed));
 		} request;
-
 		memset(&request, 0, sizeof(request));
-		request.regs[7]	= security_command;
-		request.phase	= TASKFILE_OUT;
-		request.cmd	= IDE_DRIVE_TASK_OUT;
-		request.obytes	= 512;
-		request.data[0]	= (security_master & 0x01);
-		request.data[1]	= (security_mode   & 0x01) << 8;
-
-		// Copy the password into the data section
+		((task_struct_t *)(&request.req.io_ports))->command = security_command;
+		request.req.data_phase	= TASKFILE_OUT;
+		request.req.req_cmd	= IDE_DRIVE_TASK_OUT; /* IN? */
+		request.req.out_size	= 512;
+		request.data[0] = (security_master & 0x01);
 		memcpy(&request.data[2], security_password, 32);
+
+		/* Not setting any out_flags causes a segfault and most
+		   of the times a kernel panic */
+		request.req.out_flags.b.status_command = 1;
 
 		switch (security_command) {
 			case WIN_SECURITY_UNLOCK:
@@ -999,27 +998,92 @@ void process_dev (char *devname)
 				break;
 			case WIN_SECURITY_SET_PASS:
 				description = "SECURITY_SET_PASS";
+				request.data[1] = (security_mode & 0x01);
+				if (security_master) {
+					/* master password revision code */
+					request.data[34] = 0x11;
+					request.data[35] = 0xff;
+				}
 				break;
 			case WIN_SECURITY_DISABLE:
 				description = "SECURITY_DISABLE";
 				break;
+			case WIN_SECURITY_ERASE_UNIT:
+				description = "SECURITY_ERASE";
+				request.data[0] |= (enhanced_erase & 0x02);
+				break;
 			default:
 				description = "NOTHING";
 		}
-		printf(" Issuing %s command, mode=%u/%u, password=\"%s\"\n",
-			description, request.data[1], request.data[0], request.data + 2);
-		if (ioctl(fd,HDIO_DRIVE_TASKFILE,&request))
+
+		printf(" Issuing %s command, password=\"%s\", user=%s",
+			description, security_password, 
+			request.data[0] ? "master" : "user");
+		if (security_command == WIN_SECURITY_SET_PASS)
+			printf(", mode=%s", request.data[1] ? "max" : "high");
+		printf("\n");
+/* Since the Linux kernel until at least 2.6.12 segfaults on the first command
+   when issued on a locked drive the actual erase is never issued.
+   One could patch the code to issue separate commands for erase prepare and
+   erase to erase a locked drive.
+*/
+		if (security_command == WIN_SECURITY_ERASE_UNIT) {
+			unsigned char args[4] = {WIN_SECURITY_ERASE_PREPARE,0,0,0};
+			if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+				perror(" HDIO_DRIVE_CMD(erase prepare) failed");
+			else
+				if ((ioctl(fd, HDIO_DRIVE_TASKFILE, &request))) {
+					err = errno;
+					perror("Problem issuing erase command");
+					if (err != 0)
+						printf("Error: %d\n", err);
+					if (err == EINVAL)
+						printf("You need to configure your kernel with CONFIG_IDE_TASK_IOCTL.\n");
+				}
+/* We would like to issue these commands consecutively, but since the Linux
+kernel until at least 2.6.12 segfaults on each command issued the second will
+never be executed.
+By disabling the below code block one is at least able to issue the commands
+consecutively in two runs (assuming the segfault isn't followed by an oops.
+*/
+		} else if (security_command == WIN_SECURITY_DISABLE) {
+			/* First attempt an unlock  */
+			((task_struct_t *)(&request.req.io_ports))->command = WIN_SECURITY_UNLOCK;
+			if ((ioctl(fd, HDIO_DRIVE_TASKFILE, &request))) {
+				err = errno;
+				perror("Problem issuing unlock command");
+				if (err != 0)
+					printf("Error: %d\n", err);
+				if (err == EINVAL)
+					printf("You need to configure your kernel with CONFIG_IDE_TASK_IOCTL.\n");
+			} else {
+				/* Then the security disable */
+				((task_struct_t *)(&request.req.io_ports))->command = security_command;
+				if ((ioctl(fd, HDIO_DRIVE_TASKFILE, &request))) {
+					err = errno;
+					perror("Problem issuing security disable command");
+					if (err != 0)
+						printf("Error: %d\n", err);
+					if (err == EINVAL)
+						printf("You need to configure your kernel with CONFIG_IDE_TASK_IOCTL.\n");
+				}
+			}
+		} else if ((ioctl(fd, HDIO_DRIVE_TASKFILE, &request))) {
+			err = errno;
 			perror("Problem issuing security command");
+			if (err != 0)
+				printf("Error: %d\n", err);
+			if (err == EINVAL)
+				printf("You need to configure your kernel with CONFIG_IDE_TASK_IOCTL.\n");
+		}
 	}
-#endif
-#ifdef WIN_SECURITY_FREEZE_LOCK
 	if (set_freeze) {
 		unsigned char args[4] = {WIN_SECURITY_FREEZE_LOCK,0,0,0};
 		printf(" issuing Security Freeze command\n");
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
 			perror(" HDIO_DRIVE_CMD(freeze) failed");
 	}
-#endif
+#endif /* WIN_SECURITY_FREEZE_LOCK */
 	if (set_seagate) {
 		unsigned char args[4] = {0xfb,0,0,0};
 		if (get_seagate)
@@ -1036,14 +1100,6 @@ void process_dev (char *devname)
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
 			perror(" HDIO_DRIVE_CMD(setidle1) failed");
 	}
-#else	/* HDIO_DRIVE_CMD */
-	if (force_operation) {
-		char buf[512];
-		flush_buffer_cache(fd);
-		if (-1 == read(fd, buf, sizeof(buf)))
-			perror(" access failed");
-	}
-#endif	/* HDIO_DRIVE_CMD */
 
 	if (!flagcount)
 		verbose = 1;
@@ -1340,8 +1396,8 @@ void usage_error (int out)
 	" -h   display terse usage information\n"
 	" -i   display drive identification\n"
 	" -I   detailed/current information directly from drive\n"
-	" --Istdin  reads identify data from stdin as ASCII hex\n"
-	" --Istdout writes identify data to stdout as ASCII hex\n"
+	" --Istdin  read identify data from stdin as ASCII hex\n"
+	" --Istdout write identify data to stdout as ASCII hex\n"
 #ifdef HDIO_GET_KEEPSETTINGS
 	" -k   get/set keep_settings_over_reset flag (0/1)\n"
 #endif
@@ -1395,22 +1451,41 @@ void usage_error (int out)
 	" -Z   disable Seagate auto-powersaving mode\n"
 	" -z   re-read partition table\n"
 #endif
-
 #ifdef WIN_SECURITY_FREEZE_LOCK
-	"\nATA Security Options:\n"
-	" --security-freeze 		Freeze security settings (until next reset)\n"
-	" --security-unlock PWD		Unlock drive, using password PWD (DANGEROUS)\n"
-	" --security-set-pass PWD	Lock drive, using password PWD (DANGEROUS)\n"
-	" --security-disable PWD		Disable drive locking, using password PWD (DANGEROUS) \n"
-	" --security-mode MODE		Specify user/master password and high/maximum security \n"
-	"	u	user password, high security \n"
-	"	U	user password, maximum security \n"
-	"	m	master password, high security \n"
-	"	M	master password, maximum security \n"
+	" --security-help  display help for ATA security commands\n"
 #endif
-	);
+	"\n");
 	exit(ret);
 }
+
+#ifdef WIN_SECURITY_FREEZE_LOCK
+static void security_help (void)
+{
+	printf("\n"
+	"ATA Security Commands:\n"
+	" --security-freeze          Freeze security settings until reset\n\n"
+	" The remainder of these are VERY DANGEROUS and can KILL your drive!\n"
+	" Due to bugs in most Linux kernels, use of these commands may even\n"
+	" trigger kernel segfaults or worse.  EXPERIMENT AT YOUR OWN RISK!\n\n"
+	" --security-unlock PWD      Unlock drive, using password PWD\n"
+	" --security-set-pass PWD    Lock drive, using password PWD (DANGEROUS)\n"
+	"                             Use 'NULL' as the password to set empty password\n"
+	"                             Drive gets locked when user password is selected\n"
+	" --security-disable PWD     Disable drive locking, using password PWD\n"
+	" --security-erase PWD       Erase (locked) drive using password PWD (DANGEROUS)\n"
+	"                             (VERY VERY DANGEROUS -- DO NOT USE!!)\n"
+	" --security-erase-enhanced PWD\n"
+	"                            Enhanced-erase a (locked) drive, using password PWD\n"
+	"                             (VERY VERY DANGEROUS -- DO NOT USE!!)\n"
+	" --security-mode MODE       Select security level (high/maximum) (default high)\n"
+	"     h   high security\n"
+	"     m   maximum security\n"
+	" --user-master USER         Select user/master password (default master)\n"
+	"     u   user\n"
+	"     m   master\n\n"
+	);
+}
+#endif
 
 #define GET_NUMBER(flag,num)	num = 0; \
 				if (!*p && argc && isdigit(**argv)) \
@@ -1863,15 +1938,16 @@ int main(int argc, char **argv)
 					case 'h':
 						usage_error(0);
 						break;
-					case 'F':
-						set_freeze = 1;
-						break;
+#ifdef WIN_SECURITY_FREEZE_LOCK
 					case '-':
-						p1=p;		//Save Switch-String
+						p1 = p;		//Save Switch-String
 						while (isgraph(*p))
 							p++;	//Move P forward
-#ifdef WIN_SECURITY_FREEZE_LOCK
-						if (0 == strcmp(p1, "security-freeze")) {
+						if (0 == strcmp(p1, "security-help")) {
+							security_help();
+							if (!argc)
+								exit(0);
+						} else if (0 == strcmp(p1, "security-freeze")) {
 							set_freeze = 1;
 						} else if (0 == strcmp(p1, "security-unlock")) {
 							open_flags = O_RDWR;
@@ -1883,37 +1959,38 @@ int main(int argc, char **argv)
 							set_security = 1;
 							security_command = WIN_SECURITY_SET_PASS;
 							GET_ASCII_PASSWORD(set_security,security_password);
+							if (strcmp(security_password, "NULL") == 0)
+								memset(&security_password, 0, sizeof(security_password));
 						} else if (0 == strcmp(p1, "security-disable")) {
 							open_flags = O_RDWR;
 							set_security = 1;
 							security_command = WIN_SECURITY_DISABLE;
 							GET_ASCII_PASSWORD(set_security,security_password);
+						} else if (0 == strcmp(p1, "security-erase")) {
+							open_flags = O_RDWR;
+							set_security = 1;
+							security_command = WIN_SECURITY_ERASE_UNIT;
+							GET_ASCII_PASSWORD(set_security,security_password);
+						} else if (0 == strcmp(p1, "security-erase-enhanced")) {
+							open_flags = O_RDWR;
+							set_security = 1;
+							enhanced_erase = 1;
+							security_command = WIN_SECURITY_ERASE_UNIT;
+							GET_ASCII_PASSWORD(set_security,security_password);
 						} else if (0 == strcmp(p1, "security-mode")) {
 							if (!*p && argc && isalpha(**argv))
 								p = *argv++, --argc;
-							switch (*p) {
-								case 'u':
-									security_master = 0;
-									security_mode   = 0;
-									break;
-								case 'U':
-									security_master = 0;
-									security_mode   = 1;
-									break;
-								case 'm':
-									security_master = 1;
-									security_mode   = 0;
-									break;
-								case 'M':
-									security_master = 1;
-									security_mode   = 1;
-									break;
-								default:
-									security_master = 0;
-									security_mode   = 0;
-									break;
-							}
+							if (*p == 'm') /* max */
+								security_mode = 1;
 							++p;
+						} else if (0 == strcmp(p1, "user-master")) {
+							if (!*p && argc && isalpha(**argv))
+								p = *argv++, --argc;
+							if (*p == 'u') /* user */
+								security_master = 0;
+							++p;
+						} else {
+							usage_error(1);
 						}
 						break;
 #endif
