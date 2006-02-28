@@ -1,4 +1,4 @@
-.TH HDPARM 8 "October 2005" "Version 6.3"
+.TH HDPARM 8 "February 2006" "Version 6.4"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -94,6 +94,15 @@ But there are at least a few configurations of chipsets and drives
 for which DMA does not make much of a difference, or may even slow
 things down (on really messed up hardware!).  Your mileage may vary.
 .TP
+.I --direct
+Use the kernel O_DIRECT flag when performing a
+.I -t
+timing test.  This bypasses the page cache, causing the reads
+to go directly from the drive into hdparm's buffers, using so-called
+"raw" I/O.  In many cases, this can produce results that appear
+much faster than the usual page cache method, giving a better indication
+of raw device and driver performance.
+.TP
 .I -D
 Enable/disable the on-drive defect management feature,
 whereby the drive firmware tries to automatically manage
@@ -144,7 +153,7 @@ more detail than with the older
 .I -i
 flag.
 .TP
-.I -Istdin
+.I --Istdin
 This is a special "no seatbelts" variation on the
 .B -I
 option,
@@ -154,17 +163,17 @@ The format of this block must be
 .I exactly
 the same as that found in the /proc/ide/*/hd*/identify "files",
 or that produced by the
-.B -Istdout
+.B --Istdout
 option described below.
 This variation is designed for use with collected "libraries" of drive
 identification information, and can also be used on ATAPI
 drives which may give media errors with the standard mechanism.
 .TP
-.I -Istdout
+.I --Istdout
 This option simply dumps the identify data in hex to stdout,
 in a format similar to that from /proc/, and suitable for
 later use with the
-.I -Istdin
+.I --Istdin
 option.
 .TP
 .I -k
@@ -569,22 +578,10 @@ Security freeze command by Benjamin Benz <bbe@heise.de>, 2005.
 .PP
 PIO data out security commands by Leonard den Ottolander
 <leonard den ottolander nl>, 2005.
-Parts by Benjamin Benz <bbe@heise.de>.
+Parts by Benjamin Benz <bbe@heise.de> and others.
 .SH SEE ALSO
-.B AT Attachment Interface for Disk Drives,
-ANSI ASC X3T9.2 working draft, revision 4a, April 19, 1993.
+.B http://www.t13.org/
+Technical Committee T13 ATA Attachment.
 .PP
-.B AT Attachment Interface with Extensions (ATA-2),
-ANSI ASC X3T9.2 working draft, revision 2f, July 26, 1994.
-.PP
-.B AT Attachment with Packet Interface - 5 (ATA/ATAPI-5),
-T13-1321D working draft, revision 3, February 29, 2000.
-.PP
-.B AT Attachment with Packet Interface - 6 (ATA/ATAPI-6),
-T13-1410D working draft, revision 3b, February 26, 2002.
-.PP
-.B Western Digital Enhanced IDE Implementation Guide,
-by Western Digital Corporation, revision 5.0, November 10, 1993.
-.PP
-.B Enhanced Disk Drive Specification,
-by Phoenix Technologies Ltd., version 1.0, January 25, 1994.
+.B http://www.serialata.org/
+Serial ATA International Organization.

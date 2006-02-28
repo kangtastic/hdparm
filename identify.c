@@ -65,6 +65,10 @@
 #define CDR_MAJOR		73  /* CD ROM: major version number */
 #define CDR_MINOR		74  /* CD ROM: minor version number */
 #define QUEUE_DEPTH		75  /* queue depth */
+#define SATA_CAP_0		76  /* Serial ATA Capabilities */
+#define SATA_RESERVED_77	77  /* reserved for future Serial ATA definition */
+#define SATA_SUPP_0		78  /* Serial ATA features supported */
+#define SATA_EN_0		78  /* Serial ATA features enabled */
 #define MAJOR			80  /* major version number */
 #define MINOR			81  /* minor version number */
 #define CMDS_SUPP_0		82  /* command/feature set(s) supported */
@@ -86,6 +90,8 @@
 #define LBA_MID			101 /*      bits are used, but addr 103 */
 #define LBA_48_MSB		102 /*      has been reserved for LBA in */
 #define LBA_64_MSB		103 /*      the future. */
+#define CMDS_SUPP_3		119
+#define CMDS_EN_3		120
 #define RM_STAT 		127 /* removable media status notification feature set support */
 #define SECU_STATUS		128 /* security status */
 #define CFA_PWR_MODE		160 /* CFA power mode 1 */
@@ -93,6 +99,8 @@
 #define LENGTH_MEDIA            20  /* 20 words (40 bytes or characters)*/
 #define START_MANUF             196 /* media manufacturer I.D. */
 #define LENGTH_MANUF            10  /* 10 words (20 bytes or characters) */
+#define TRANSPORT_MAJOR		222 /* PATA vs. SATA etc.. */
+#define TRANSPORT_MINOR		223 /* minor revision number */
 #define INTEGRITY		255 /* integrity word */
 
 /* bit definitions within the words */
@@ -231,8 +239,8 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 /* NOVAL_0 or  NOVAL_1 means device does not report version */
 
 /* word 81: minor version number */
-#define MINOR_MAX		0x1f
-const char *minor_str[] = {				/* word 81 value: */
+#define MINOR_MAX		0x22
+const char *minor_str[MINOR_MAX+2] = {			/* word 81 value: */
 	"Unspecified",					/* 0x0000	*/
 	"ATA-1 X3T9.2 781D prior to revision 4",	/* 0x0001	*/
 	"ATA-1 published, ANSI X3.221-1994",		/* 0x0002	*/
@@ -251,22 +259,26 @@ const char *minor_str[] = {				/* word 81 value: */
 	"ATA/ATAPI-4 X3T13 1153D revision 7",		/* 0x000f	*/
 	"ATA/ATAPI-4 T13 1153D revision 18",		/* 0x0010	*/
 	"ATA/ATAPI-4 T13 1153D revision 15",		/* 0x0011	*/
-	"ATA/ATAPI-4 published, ANSI NCITS 317-1998",	/* 0x0012	*/
+	"ATA/ATAPI-4 published, ANSI INCITS 317-1998",	/* 0x0012	*/
 	"ATA/ATAPI-5 T13 1321D revision 3",
 	"ATA/ATAPI-4 T13 1153D revision 14",		/* 0x0014	*/
 	"ATA/ATAPI-5 T13 1321D revision 1",		/* 0x0015	*/
-	"ATA/ATAPI-5 published, ANSI NCITS 340-2000",	/* 0x0016	*/
+	"ATA/ATAPI-5 published, ANSI INCITS 340-2000",	/* 0x0016	*/
 	"ATA/ATAPI-4 T13 1153D revision 17",		/* 0x0017	*/
 	"ATA/ATAPI-6 T13 1410D revision 0",		/* 0x0018	*/
 	"ATA/ATAPI-6 T13 1410D revision 3a",		/* 0x0019	*/
-	"Reserved",					/* 0x001a	*/
+	"ATA/ATAPI-7 T13 1532D revision 1",		/* 0x001a	*/
 	"ATA/ATAPI-6 T13 1410D revision 2",		/* 0x001b	*/
 	"ATA/ATAPI-6 T13 1410D revision 1",		/* 0x001c	*/
-	"Reserved"					/* 0x001d	*/
-	"Reserved"					/* 0x001e	*/
-	"Reserved"					/* 0x001f-0xfffe*/
+	"ATA/ATAPI-7 published, ANSI INCITS 397-2005",	/* 0x001d	*/
+	"ATA/ATAPI-7 T13 1532D revision 0",		/* 0x001e	*/
+	"Reserved"					/* 0x001f	*/
+	"Reserved"					/* 0x0020	*/
+	"ATA/ATAPI-7 T13 1532D revision 4a",		/* 0x0021	*/
+	"ATA/ATAPI-6 published, ANSI INCITS 361-2002",	/* 0x0022	*/
+	"Reserved"					/* 0x0023-0xfffe*/
 };
-const char actual_ver[] = { 
+const char actual_ver[MINOR_MAX+2] = { 
 			/* word 81 value: */
 	0,		/* 0x0000	WARNING: 	*/
 	1,		/* 0x0001	WARNING: 	*/
@@ -294,74 +306,135 @@ const char actual_ver[] = {
 	4,		/* 0x0017	WARNING:	*/
 	6,		/* 0x0018	WARNING:	*/
 	6,		/* 0x0019	WARNING:	*/
-	0,		/* 0x001a	WARNING:	*/
+	7,		/* 0x001a	WARNING:	*/
 	6,		/* 0x001b	WARNING:	*/
 	6,		/* 0x001c	WARNING:	*/
-	0,		/* 0x001d	WARNING:	*/
-	0,		/* 0x001e	WARNING:	*/
-	0		/* 0x001f-0xfffe    		*/
+	7,		/* 0x001d	WARNING:	*/
+	7,		/* 0x001e	WARNING:	*/
+	0,		/* 0x001f	WARNING:	*/
+	0,		/* 0x0020	WARNING:	*/
+	7,		/* 0x0021	WARNING:	*/
+	6,		/* 0x0022	WARNING:	*/
+	0		/* 0x0023-0xfffe    		*/
 };
 
 /* words 82-84: cmds/feats supported */
 #define CMDS_W82		0x77ff  /* word 82: defined command locations*/
 #define CMDS_W83		0x3fff  /* word 83: defined command locations*/
-#define CMDS_W84		0x002f  /* word 83: defined command locations*/
+#define CMDS_W84		0x27ff  /* word 84: defined command locations*/
 #define SUPPORT_48_BIT		0x0400  
 #define NUM_CMD_FEAT_STR	48
 
-const char *cmd_feat_str[] = { 
-	"",					/* word 82 bit 15: obsolete  */
-	"NOP cmd",				/* word 82 bit 14 */
-	"READ BUFFER cmd",			/* word 82 bit 13 */
-	"WRITE BUFFER cmd",			/* word 82 bit 12 */
-	"",					/* word 82 bit 11: obsolete  */
-	"Host Protected Area feature set",	/* word 82 bit 10 */
-	"DEVICE RESET cmd",			/* word 82 bit  9 */
-	"SERVICE interrupt",			/* word 82 bit  8 */
-	"Release interrupt",			/* word 82 bit  7 */
-	"Look-ahead",				/* word 82 bit  6 */
-	"Write cache",				/* word 82 bit  5 */
-	"PACKET command feature set",		/* word 82 bit  4 */
-	"Power Management feature set",		/* word 82 bit  3 */
-	"Removable Media feature set",		/* word 82 bit  2 */
-	"Security Mode feature set",		/* word 82 bit  1 */
-	"SMART feature set",			/* word 82 bit  0 */
-						/* --------------*/
-	"",					/* word 83 bit 15: !valid bit */
-	"",					/* word 83 bit 14:  valid bit */
-	"FLUSH CACHE EXT command",		/* word 83 bit 13 */
-	"Mandatory FLUSH CACHE command ",	/* word 83 bit 12 */
-	"Device Configuration Overlay feature set ",
-	"48-bit Address feature set ",		/* word 83 bit 10 */
-	"Automatic Acoustic Management feature set ",
-	"SET MAX security extension",		/* word 83 bit  8 */
-	"Address Offset Reserved Area Boot",	/* word 83 bit  7 */
-	"SET FEATURES subcommand required to spinup after power up",
-	"Power-Up In Standby feature set",	/* word 83 bit  5 */
-	"Removable Media Status Notification feature set",
-	"Advanced Power Management feature set",/* word 83 bit  3 */
-	"CFA feature set",			/* word 83 bit  2 */
-	"READ/WRITE DMA QUEUED",		/* word 83 bit  1 */
-	"DOWNLOAD MICROCODE cmd", 		/* word 83 bit  0 */
-						/* --------------*/
-	"",					/* word 84 bit 15: !valid bit */
-	"",					/* word 84 bit 14:  valid bit */
-	"",					/* word 84 bit 13:  reserved */
-	"",					/* word 84 bit 12:  reserved */
-	"",					/* word 84 bit 11:  reserved */
-	"",					/* word 84 bit 10:  reserved */
-	"",					/* word 84 bit  9:  reserved */
-	"",					/* word 84 bit  8:  reserved */
-	"",					/* word 84 bit  7:  reserved */
-	"",					/* word 84 bit  6:  reserved */
-	"General Purpose Logging feature set",	/* word 84 bit  5 */
-	"",					/* word 84 bit  4:  reserved */
-	"Media Card Pass Through Command feature set ",
-	"Media serial number ",			/* word 84 bit  2 */
-	"SMART self-test ",			/* word 84 bit  1 */
-	"SMART error logging "			/* word 84 bit  0 */
-};
+static const char unknown[8] = "unknown";
 
+static const char *feat_0_str[16] = { 
+	unknown,					/* word 82 bit 15: obsolete  */
+	"NOP cmd",					/* word 82 bit 14 */
+	"READ BUFFER cmd",				/* word 82 bit 13 */
+	"WRITE BUFFER cmd",				/* word 82 bit 12 */
+	unknown,					/* word 82 bit 11: obsolete  */
+	"Host Protected Area feature set",		/* word 82 bit 10 */
+	"DEVICE RESET cmd",				/* word 82 bit  9 */
+	"SERVICE interrupt",				/* word 82 bit  8 */
+	"Release interrupt",				/* word 82 bit  7 */
+	"Look-ahead",					/* word 82 bit  6 */
+	"Write cache",					/* word 82 bit  5 */
+	"PACKET command feature set",			/* word 82 bit  4 */
+	"Power Management feature set",			/* word 82 bit  3 */
+	"Removable Media feature set",			/* word 82 bit  2 */
+	"Security Mode feature set",			/* word 82 bit  1 */
+	"SMART feature set"				/* word 82 bit  0 */
+};
+static const char *feat_1_str[16] = { 
+	unknown,					/* word 83 bit 15: !valid bit */
+	unknown,					/* word 83 bit 14:  valid bit */
+	"FLUSH_CACHE_EXT",				/* word 83 bit 13 */
+	"Mandatory FLUSH_CACHE",			/* word 83 bit 12 */
+	"Device Configuration Overlay feature set",	/* word 83 bit 11 */
+	"48-bit Address feature set",			/* word 83 bit 10 */
+	"Automatic Acoustic Management feature set",	/* word 83 bit  9 */
+	"SET_MAX security extension",			/* word 83 bit  8 */
+	"Address Offset Reserved Area Boot",		/* word 83 bit  7 */
+	"SET_FEATURES required to spinup after power up",/* word 83 bit 6 */
+	"Power-Up In Standby feature set",		/* word 83 bit  5 */
+	"Removable Media Status Notification feature set",/* word 83 bit 4 */
+	"Advanced Power Management feature set",	/* word 83 bit  3 */
+	"CFA feature set",				/* word 83 bit  2 */
+	"READ/WRITE_DMA_QUEUED",			/* word 83 bit  1 */
+	"DOWNLOAD_MICROCODE"				/* word 83 bit  0 */
+};
+static const char *feat_2_str[16] = { 
+	unknown,					/* word 84 bit 15: !valid bit */
+	unknown,					/* word 84 bit 14:  valid bit */
+	"IDLE_IMMEDIATE with UNLOAD",			/* word 84 bit 13 */
+	unknown,					/* word 84 bit 12 */
+	unknown,					/* word 84 bit 11 */
+	"URG for WRITE_STREAM[_DMA]_EXT",		/* word 84 bit 10 */
+	"URG for READ_STREAM[_DMA]_EXT",		/* word 84 bit  9 */
+	"64-bit World wide name",			/* word 84 bit  8 */
+	"WRITE_DMA_QUEUED_FUA_EXT",			/* word 84 bit  7 */
+	"WRITE_{DMA|MULTIPLE}_FUA_EXT",			/* word 84 bit  6 */
+	"General Purpose Logging feature set",		/* word 84 bit  5 */
+	"Media Card Pass-Through",			/* word 84 bit  4 */
+	"Media Card Pass Through Command feature set",	/* word 84 bit  3 */
+	"Media serial number",				/* word 84 bit  2 */
+	"SMART self-test",				/* word 84 bit  1 */
+	"SMART error logging"				/* word 84 bit  0 */
+};
+static const char *feat_3_str[16] = { 
+	unknown,					/* word 119 bit 15: !valid bit */
+	unknown,					/* word 119 bit 14:  valid bit */
+	unknown,					/* word 119 bit 13 */
+	unknown,					/* word 119 bit 12 */
+	unknown,					/* word 119 bit 11 */
+	unknown,					/* word 119 bit 10 */
+	unknown,					/* word 119 bit  9 */
+	unknown,					/* word 119 bit  8 */
+	unknown,					/* word 119 bit  7 */
+	unknown,					/* word 119 bit  6 */
+	unknown,					/* word 119 bit  5 */
+	"Segmented DOWNLOAD_MICROCODE",			/* word 119 bit  4 */
+	"{READ,WRITE}_DMA_EXT_GPL",			/* word 119 bit  3 */
+	"WRITE_UNCORRECTABLE",				/* word 119 bit  2 */
+	"Write-Read-Verify feature set",		/* word 119 bit  1 */
+	unknown						/* word 119 bit  0: reserved for DT2014 */
+};
+static const char *cap_sata0_str[16] = { 
+	unknown,					/* word 76 bit 15 */
+	unknown,					/* word 76 bit 14 */
+	unknown,					/* word 76 bit 13 */
+	unknown,					/* word 76 bit 12 */
+	unknown,					/* word 76 bit 11 */
+	"Phy event counters",				/* word 76 bit 10 */
+	"Host-initiated interface power management",	/* word 76 bit  9 */
+	"Native Command Queueing (NCQ)",		/* word 76 bit  8 */
+	unknown,					/* word 76 bit  7 */
+	unknown,					/* word 76 bit  6 */
+	unknown,					/* word 76 bit  5 */
+	unknown,					/* word 76 bit  4 */
+	unknown,					/* word 76 bit  3 */
+	"SATA-II signaling speed (3.0Gb/s)",		/* word 76 bit  2 */
+	"SATA-I signaling speed (1.5Gb/s)",		/* word 76 bit  1 */
+	unknown						/* word 76 bit  0 */
+};
+static const char *feat_sata0_str[16] = {
+	unknown,					/* word 78 bit 15 */
+	unknown,					/* word 78 bit 14 */
+	unknown,					/* word 78 bit 13 */
+	unknown,					/* word 78 bit 12 */
+	unknown,					/* word 78 bit 11 */
+	unknown,					/* word 78 bit 10 */
+	unknown,					/* word 78 bit  9 */
+	unknown,					/* word 78 bit  8 */
+	unknown,					/* word 78 bit  7 */
+	"Software settings preservation",		/* word 78 bit  6 */
+	unknown,					/* word 78 bit  5 */
+	"In-order data delivery",			/* word 78 bit  4 */
+	"Device-initiated interface power management",	/* word 78 bit  3 */
+	"DMA Setup Auto-Activate optimization",		/* word 78 bit  2 */
+	"Non-Zero buffer offsets in DMA Setup FIS",	/* word 78 bit  1 */
+	unknown						/* word 78 bit  0 */
+};
 
 /* words 85-87: cmds/feats enabled */
 /* use cmd_feat_str[] to display what commands and features have
@@ -411,6 +484,78 @@ const char *secu_str[] = {
 __u8 mode_loop(__u16 mode_sup, __u16 mode_sel, int cc, __u8 *have_mode);
 void print_ascii(__u16 *p, __u8 length);
 
+// Given a known-supported ATA major revision,
+// return the lowest possible supported ATA revision.
+// Each new revision seems to (sometimes) obsolete one
+// of the bits corresponding to an older revision.
+static __u16 min_ata_std (__u16 major)
+{
+	if (major <= 4)		// up to ata4, no obsolete bits
+		return 1;
+	if (major == 5)		// ata5 obsoleted the ata1 bit
+		return 2;
+	if (major <= 7)		// ata6,7 obsoleted the ata2 bit
+		return 3;
+	return 4;		// ata8 obsoleted the ata3 bit
+}
+
+static void print_features (__u16 supported, __u16 enabled, const char *names[])
+{
+	int i;
+	for (i = 0; i < 16; ++i) {
+		__u16 mask = 1 << i;
+		if ((supported & mask) && names[15 - i])
+			printf("\t   %c\t%s\n", (enabled & mask) ? '*' : ' ', names[15 - i]);
+	}
+}
+
+static int print_transport_type(__u16 major, __u16 minor)
+{
+	unsigned int ttype, subtype, transport = 0;
+
+	if (major == 0x0000 || major == 0xffff)
+		return transport;
+	printf("Transport: ");
+	ttype = major >> 12;
+	subtype = major & 0xfff;
+	transport = ttype;
+	switch (ttype) {
+		case 0:
+			printf("Parallel");
+			if (subtype & 1)
+				printf(", ATA8-APT");
+			break;
+		case 1:
+			printf("Serial");
+			if (subtype & 0xf) {
+				if (subtype & 1)
+					printf(", ATA8-AST");
+				if (subtype & 2)
+					printf(", SATA 1.0a");
+				if (subtype & 4)
+					printf(", SATA II Extensions");
+				if (subtype & 8)
+					printf(", SATA Rev 2.5");
+			}
+			break;
+		default:
+			printf("0x%04x", major);
+			break;
+	}
+	if (minor != 0x0000 && minor != 0xffff) {
+		printf("; Revision: ");
+		switch (minor) {
+			case 0x21:
+				printf("ATA8-AST T13 Project D1697 Revision 0b");
+				break;
+			default:
+				printf("0x%04x", minor);
+		}
+	}
+	putchar('\n');
+	return transport;
+}
+
 /* our main() routine: */
 void identify (__u16 *id_supplied, const char *devname)
 {
@@ -424,6 +569,7 @@ void identify (__u16 *id_supplied, const char *devname)
 	__u8  chksum = 0;
 	__u32 ll, mm, nn;
 	__u64 bb, bbbig; /* (:) */
+	int transport;
 
 	if (id_supplied) {
 		memcpy(val, id_supplied, sizeof(val));
@@ -455,6 +601,7 @@ void identify (__u16 *id_supplied, const char *devname)
 
 	/* check if we recognise the device type */
 	printf("\n");
+
 	if(!(val[GEN_CONFIG] & NOT_ATA)) {
 		dev = ATA_DEV;
 		printf("ATA device, with ");
@@ -515,37 +662,44 @@ void identify (__u16 *id_supplied, const char *devname)
 		print_ascii(&val[START_MANUF], LENGTH_MANUF);
 	}
 
+	transport = print_transport_type(val[TRANSPORT_MAJOR], val[TRANSPORT_MINOR]);
+
 	/* major & minor standards version number (Note: these words were not
 	 * defined until ATA-3 & the CDROM std uses different words.) */
 	printf("Standards:");
 	if(eqpt != CDROM) {
-		if(val[MINOR] && (val[MINOR] <= MINOR_MAX)){
-			if(like_std < 3) like_std = 3;
+		//printf("major=%04x minor=%04x\n", val[MAJOR], val[MINOR]);
+		if(val[MINOR] && (val[MINOR] <= MINOR_MAX)) {
+			if(like_std < 3)
+				like_std = 3;
 			std = actual_ver[val[MINOR]];
-			if(std) {
-				printf("\n\tUsed: ");
-				printf("%s ",minor_str[val[MINOR]]);
-			}
+			if (std)
+				printf("\n\tUsed: %s ",minor_str[val[MINOR]]);
+		} else if (val[MINOR] == 0x107) {
+			std = 8;
+			printf("\n\tUsed: %s ", "ATA8-ACS revision 2d");
 		}
 		/* looks like when they up-issue the std, they obsolete one;
-		 * thus, only the newest 4 issues need be supported. (That's 
-		 * what "kk" and "min_std" are all about.) */
-		if(val[MAJOR] && (val[MAJOR] !=NOVAL_1)) {
+		 * thus, only the newest 4 issues need be supported.
+		 * (That's what "kk" and "min_std" are all about) */
+		if(val[MAJOR] && (val[MAJOR] != NOVAL_1)) {
 			printf("\n\tSupported: ");
 			jj = val[MAJOR] << 1;
-			kk = like_std >4 ? like_std-4: 0;
-			for(ii = 14; (ii >0)&&(ii>kk); ii--) {
+			kk = min_ata_std(like_std);
+			for(ii = 14; ii > kk; ii--) {
 				if(jj & 0x8000) {
 					printf("%u ", ii);
-					if(like_std < ii) {
+					if (ii > like_std) {
 						like_std = ii;
-						kk = like_std >4 ? like_std-4: 0;
+						kk = min_ata_std(like_std);
 					}
-					if(min_std > ii) min_std = ii;
+					if (min_std > ii)
+					       	min_std = ii;
 				}
 				jj <<= 1;
 			}
-			if(like_std < 3) like_std = 3;
+			if(like_std < 3)
+				like_std = 3;
 		}
 		/* Figure out what standard the device is using if it hasn't told
 		 * us.  If we know the std, check if the device is using any of
@@ -592,7 +746,7 @@ void identify (__u16 *id_supplied, const char *devname)
 			kk = 1;
 			printf("\n\tUsed: ATAPI for CD-ROMs, SFF-8020i, r2.5");
 		}
-		if(val[CDR_MAJOR] && (val[CDR_MAJOR] !=NOVAL_1)) {
+		if(val[CDR_MAJOR] && (val[CDR_MAJOR] != NOVAL_1)) {
 			kk = 1;
 			printf("\n\tSupported: CD-ROM ATAPI");
 			jj = val[CDR_MAJOR] >> 1;
@@ -609,7 +763,8 @@ void identify (__u16 *id_supplied, const char *devname)
 		like_std = 2;
 	}
 
-	if(min_std == 0xffff) min_std = like_std > 4 ? like_std - 3 : 1;
+	if(min_std == 0xffff)
+		min_std = like_std > 4 ? like_std - 3 : 1;
 
 	printf("Configuration:\n");
 	/* more info from the general configuration word */
@@ -728,8 +883,10 @@ void identify (__u16 *id_supplied, const char *devname)
 		jj = 1;
 	}
 	if((eqpt != CDROM) && (like_std > 3)) {
-		printf("\tQueue depth: %u",(val[QUEUE_DEPTH] & DEPTH_BITS)+1);
-		jj = 1;
+		if ((val[CMDS_SUPP_1] & VALID) == VALID_VAL && val[CMDS_SUPP_1] & 2) {
+			printf("\tQueue depth: %u",(val[QUEUE_DEPTH] & DEPTH_BITS)+1);
+			jj = 1;
+		}
 	}
 	if(jj) printf("\n");
 	if(dev == ATA_DEV) {
@@ -857,28 +1014,25 @@ void identify (__u16 *id_supplied, const char *devname)
 
 	if((val[CMDS_SUPP_1] & VALID) == VALID_VAL){
 		printf("Commands/features:\n\tEnabled\tSupported:\n");
-		jj = val[CMDS_SUPP_0];
-		kk = val[CMDS_EN_0];
-		for(ii = 0; ii < NUM_CMD_FEAT_STR; ii++) {
-			if((jj & 0x8000) && (*cmd_feat_str[ii] != '\0')) {
-				if(kk & 0x8000) printf("\t   *");
-				else		printf("\t");
-				printf("\t%s\n",cmd_feat_str[ii]);
-			}
-			jj <<=1; kk<<=1;
-			if(ii%16 == 15) {
-				jj = val[CMDS_SUPP_0+1+(ii/16)];
-				kk = val[CMDS_EN_0+1+(ii/16)];
-			}
-			if(ii == 31) {
-				if((val[CMDS_SUPP_2] & VALID) != VALID_VAL) ii +=16;
-			}
-		}
+		print_features(val[CMDS_SUPP_0] & 0x7fff, val[CMDS_EN_0], feat_0_str);
+		if( (val[CMDS_SUPP_1] &  VALID) == VALID_VAL)
+			print_features(val[CMDS_SUPP_1] & 0x3fff, val[CMDS_EN_1], feat_1_str);
+		if( (val[CMDS_SUPP_2] &  VALID) == VALID_VAL
+		 && (val[CMDS_EN_2]  &   VALID) == VALID_VAL)
+			print_features(val[CMDS_SUPP_2] & 0x3fff, val[CMDS_EN_2], feat_2_str);
+		if( (val[CMDS_SUPP_1] &  VALID) == VALID_VAL
+		 && (val[CMDS_EN_1]   & 0x8000) == 0x8000
+		 && (val[CMDS_SUPP_3] &  VALID) == VALID_VAL
+		 && (val[CMDS_EN_3]   &  VALID) == VALID_VAL)
+			print_features(val[CMDS_SUPP_3] & 0x3fff, val[CMDS_EN_3], feat_3_str);
+		if (transport == 1 || (val[SATA_CAP_0] && val[SATA_CAP_0] != 0xffff))
+			print_features(val[SATA_CAP_0],  val[SATA_CAP_0], cap_sata0_str);
+		if (transport == 1 || (val[SATA_SUPP_0] && val[SATA_SUPP_0] != 0xffff))
+			print_features(val[SATA_SUPP_0], val[SATA_EN_0], feat_sata0_str);
 	}
 	if((val[RM_STAT] & RM_STAT_BITS) == RM_STAT_SUP) 
 		printf("\tRemovable Media Status Notification feature set supported\n");
-	
-	
+
 	/* security */
 	if((eqpt != CDROM) && (like_std > 3) && 
 	   (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME])) {

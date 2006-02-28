@@ -1,3 +1,8 @@
+hdparm-6.4
+	- Makefile updates from Mikkel Krautz
+	- manpage updates / corrections.
+	- fixed bug in -C code.
+	- major updates to bring -I information up to current specs.
 hdparm-6.3
 	- added reporting of ATA revision numbers > 7
 hdparm-6.2

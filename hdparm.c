@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v6.3"
+#define VERSION "v6.4"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -1232,7 +1232,7 @@ consecutively in two runs (assuming the segfault isn't followed by an oops.
 		unsigned char args[4] = {WIN_CHECKPOWERMODE1,0,0,0};
 		const char *state;
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args)
-		 && (args[0] = WIN_CHECKPOWERMODE2) /* try again with 0x98 */
+		 && (args[0] == WIN_CHECKPOWERMODE2) /* try again with 0x98 */
 		 && ioctl(fd, HDIO_DRIVE_CMD, &args)) {
 			if (errno != EIO || args[0] != 0 || args[1] != 0)
 				state = "unknown";
@@ -1274,7 +1274,7 @@ consecutively in two runs (assuming the segfault isn't followed by an oops.
 	}
 	if (get_IDentity) {
 		__u16 *id;
-		unsigned char args[4+512] = {WIN_IDENTIFY,0,0,1,};
+		unsigned char args[4+512] = {WIN_IDENTIFY,0,0,1,}; // FIXME?
 		unsigned i;
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args)) {
 			args[0] = WIN_PIDENTIFY;
