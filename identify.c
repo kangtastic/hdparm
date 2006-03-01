@@ -68,7 +68,7 @@
 #define SATA_CAP_0		76  /* Serial ATA Capabilities */
 #define SATA_RESERVED_77	77  /* reserved for future Serial ATA definition */
 #define SATA_SUPP_0		78  /* Serial ATA features supported */
-#define SATA_EN_0		78  /* Serial ATA features enabled */
+#define SATA_EN_0		79  /* Serial ATA features enabled */
 #define MAJOR			80  /* major version number */
 #define MINOR			81  /* minor version number */
 #define CMDS_SUPP_0		82  /* command/feature set(s) supported */
@@ -325,16 +325,18 @@ const char actual_ver[MINOR_MAX+2] = {
 #define SUPPORT_48_BIT		0x0400  
 #define NUM_CMD_FEAT_STR	48
 
-static const char unknown[8] = "unknown";
+static const char unknown[8] = "obsolete";
+//static const char unknown[8] = "unknown";
+#define unknown "unknown-"
 
 static const char *feat_0_str[16] = { 
-	unknown,					/* word 82 bit 15: obsolete  */
+	"obsolete 82[15]",				/* word 82 bit 15: obsolete  */
 	"NOP cmd",					/* word 82 bit 14 */
-	"READ BUFFER cmd",				/* word 82 bit 13 */
-	"WRITE BUFFER cmd",				/* word 82 bit 12 */
-	unknown,					/* word 82 bit 11: obsolete  */
+	"READ_BUFFER command",				/* word 82 bit 13 */
+	"WRITE_BUFFER command",				/* word 82 bit 12 */
+	"WRITE_VERIFY command",				/* word 82 bit 11: obsolete  */
 	"Host Protected Area feature set",		/* word 82 bit 10 */
-	"DEVICE RESET cmd",				/* word 82 bit  9 */
+	"DEVICE_RESET command",				/* word 82 bit  9 */
 	"SERVICE interrupt",				/* word 82 bit  8 */
 	"Release interrupt",				/* word 82 bit  7 */
 	"Look-ahead",					/* word 82 bit  6 */
@@ -346,8 +348,8 @@ static const char *feat_0_str[16] = {
 	"SMART feature set"				/* word 82 bit  0 */
 };
 static const char *feat_1_str[16] = { 
-	unknown,					/* word 83 bit 15: !valid bit */
-	unknown,					/* word 83 bit 14:  valid bit */
+	NULL,						/* word 83 bit 15: !valid bit */
+	NULL,						/* word 83 bit 14:  valid bit */
 	"FLUSH_CACHE_EXT",				/* word 83 bit 13 */
 	"Mandatory FLUSH_CACHE",			/* word 83 bit 12 */
 	"Device Configuration Overlay feature set",	/* word 83 bit 11 */
@@ -364,11 +366,11 @@ static const char *feat_1_str[16] = {
 	"DOWNLOAD_MICROCODE"				/* word 83 bit  0 */
 };
 static const char *feat_2_str[16] = { 
-	unknown,					/* word 84 bit 15: !valid bit */
-	unknown,					/* word 84 bit 14:  valid bit */
+	NULL,						/* word 84 bit 15: !valid bit */
+	NULL,						/* word 84 bit 14:  valid bit */
 	"IDLE_IMMEDIATE with UNLOAD",			/* word 84 bit 13 */
-	unknown,					/* word 84 bit 12 */
-	unknown,					/* word 84 bit 11 */
+	"unknown 84[12]",				/* word 84 bit 12 */
+	"unknown 84[11]",				/* word 84 bit 11 */
 	"URG for WRITE_STREAM[_DMA]_EXT",		/* word 84 bit 10 */
 	"URG for READ_STREAM[_DMA]_EXT",		/* word 84 bit  9 */
 	"64-bit World wide name",			/* word 84 bit  8 */
@@ -382,58 +384,58 @@ static const char *feat_2_str[16] = {
 	"SMART error logging"				/* word 84 bit  0 */
 };
 static const char *feat_3_str[16] = { 
-	unknown,					/* word 119 bit 15: !valid bit */
-	unknown,					/* word 119 bit 14:  valid bit */
-	unknown,					/* word 119 bit 13 */
-	unknown,					/* word 119 bit 12 */
-	unknown,					/* word 119 bit 11 */
-	unknown,					/* word 119 bit 10 */
-	unknown,					/* word 119 bit  9 */
-	unknown,					/* word 119 bit  8 */
-	unknown,					/* word 119 bit  7 */
-	unknown,					/* word 119 bit  6 */
-	unknown,					/* word 119 bit  5 */
+	NULL,						/* word 119 bit 15: !valid bit */
+	NULL,						/* word 119 bit 14:  valid bit */
+	"unknown 119[13]",				/* word 119 bit 13 */
+	"unknown 119[12]",				/* word 119 bit 12 */
+	"unknown 119[11]",				/* word 119 bit 11 */
+	"unknown 119[10]",				/* word 119 bit 10 */
+	"unknown 119[9]",				/* word 119 bit  9 */
+	"unknown 119[8]",				/* word 119 bit  8 */
+	"unknown 119[7]",				/* word 119 bit  7 */
+	"unknown 119[6]",				/* word 119 bit  6 */
+	"unknown 119[5]",				/* word 119 bit  5 */
 	"Segmented DOWNLOAD_MICROCODE",			/* word 119 bit  4 */
-	"{READ,WRITE}_DMA_EXT_GPL",			/* word 119 bit  3 */
-	"WRITE_UNCORRECTABLE",				/* word 119 bit  2 */
+	"{READ,WRITE}_DMA_EXT_GPL commands",		/* word 119 bit  3 */
+	"WRITE_UNCORRECTABLE command",			/* word 119 bit  2 */
 	"Write-Read-Verify feature set",		/* word 119 bit  1 */
-	unknown						/* word 119 bit  0: reserved for DT2014 */
+	"unknown 119[0]"				/* word 119 bit  0: reserved for DT2014 */
 };
 static const char *cap_sata0_str[16] = { 
-	unknown,					/* word 76 bit 15 */
-	unknown,					/* word 76 bit 14 */
-	unknown,					/* word 76 bit 13 */
-	unknown,					/* word 76 bit 12 */
-	unknown,					/* word 76 bit 11 */
+	"unknown 76[15]",				/* word 76 bit 15 */
+	"unknown 76[14]",				/* word 76 bit 14 */
+	"unknown 76[13]",				/* word 76 bit 13 */
+	"unknown 76[12]",				/* word 76 bit 12 */
+	"unknown 76[11]",				/* word 76 bit 11 */
 	"Phy event counters",				/* word 76 bit 10 */
 	"Host-initiated interface power management",	/* word 76 bit  9 */
 	"Native Command Queueing (NCQ)",		/* word 76 bit  8 */
-	unknown,					/* word 76 bit  7 */
-	unknown,					/* word 76 bit  6 */
-	unknown,					/* word 76 bit  5 */
-	unknown,					/* word 76 bit  4 */
-	unknown,					/* word 76 bit  3 */
+	"unknown 76[7]",				/* word 76 bit  7 */
+	"unknown 76[6]",				/* word 76 bit  6 */
+	"unknown 76[5]",				/* word 76 bit  5 */
+	"unknown 76[4]",				/* word 76 bit  4 */
+	"unknown 76[3]",				/* word 76 bit  3 */
 	"SATA-II signaling speed (3.0Gb/s)",		/* word 76 bit  2 */
 	"SATA-I signaling speed (1.5Gb/s)",		/* word 76 bit  1 */
-	unknown						/* word 76 bit  0 */
+	"unknown 76[0]"					/* word 76 bit  0 */
 };
 static const char *feat_sata0_str[16] = {
-	unknown,					/* word 78 bit 15 */
-	unknown,					/* word 78 bit 14 */
-	unknown,					/* word 78 bit 13 */
-	unknown,					/* word 78 bit 12 */
-	unknown,					/* word 78 bit 11 */
-	unknown,					/* word 78 bit 10 */
-	unknown,					/* word 78 bit  9 */
-	unknown,					/* word 78 bit  8 */
-	unknown,					/* word 78 bit  7 */
+	"unknown 78[15]",				/* word 78 bit 15 */
+	"unknown 78[14]",				/* word 78 bit 14 */
+	"unknown 78[13]",				/* word 78 bit 13 */
+	"unknown 78[12]",				/* word 78 bit 12 */
+	"unknown 78[11]",				/* word 78 bit 11 */
+	"unknown 78[10]",				/* word 78 bit 10 */
+	"unknown 78[9]",				/* word 78 bit  9 */
+	"unknown 78[8]",				/* word 78 bit  8 */
+	"unknown 78[7]",				/* word 78 bit  7 */
 	"Software settings preservation",		/* word 78 bit  6 */
-	unknown,					/* word 78 bit  5 */
+	"unknown 78[5]",				/* word 78 bit  5 */
 	"In-order data delivery",			/* word 78 bit  4 */
 	"Device-initiated interface power management",	/* word 78 bit  3 */
 	"DMA Setup Auto-Activate optimization",		/* word 78 bit  2 */
 	"Non-Zero buffer offsets in DMA Setup FIS",	/* word 78 bit  1 */
-	unknown						/* word 78 bit  0 */
+	"unknown 78[0]"					/* word 78 bit  0 */
 };
 
 /* words 85-87: cmds/feats enabled */
@@ -883,7 +885,15 @@ void identify (__u16 *id_supplied, const char *devname)
 		jj = 1;
 	}
 	if((eqpt != CDROM) && (like_std > 3)) {
+		int has_queuing = 0;
+		if (transport == 1 || (val[SATA_CAP_0] && val[SATA_CAP_0] != 0xffff)) {
+			if (val[SATA_CAP_0] & 0x0100)
+				has_queuing = 1;	// SATA NCQ
+		}
 		if ((val[CMDS_SUPP_1] & VALID) == VALID_VAL && val[CMDS_SUPP_1] & 2) {
+			has_queuing = 1;		// TCQ
+		}
+		if (has_queuing) {
 			printf("\tQueue depth: %u",(val[QUEUE_DEPTH] & DEPTH_BITS)+1);
 			jj = 1;
 		}

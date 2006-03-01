@@ -1,5 +1,7 @@
+hdparm-6.5
+	- fix -I bugs from version 6.4.
 hdparm-6.4
-	- Makefile updates from Mikkel Krautz
+	- Makefile updates from Mikkel Krautz.
 	- manpage updates / corrections.
 	- fixed bug in -C code.
 	- major updates to bring -I information up to current specs.

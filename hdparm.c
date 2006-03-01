@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v6.4"
+#define VERSION "v6.5"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
