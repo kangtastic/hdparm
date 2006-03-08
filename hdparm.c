@@ -20,12 +20,13 @@
 #include <linux/hdreg.h>
 #include <linux/major.h>
 #include <asm/byteorder.h>
+//#include <endian.h>
 
 #include "hdparm.h"
 
 extern const char *minor_str[];
 
-#define VERSION "v6.5"
+#define VERSION "v6.6"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -84,6 +85,8 @@ static unsigned long set_doorlock = 0, get_doorlock = 0, doorlock = 0;
 static unsigned long set_seagate  = 0, get_seagate  = 0;
 static unsigned long set_standbynow = 0, get_standbynow = 0;
 static unsigned long set_sleepnow   = 0, get_sleepnow   = 0;
+
+#ifdef IDE_DRIVE_TASK_NO_DATA
 static unsigned long set_freeze   = 0;
 static unsigned long security_master = 1, security_mode = 0;
 static unsigned long enhanced_erase = 0;
@@ -100,6 +103,8 @@ static unsigned long set_security   = 0;
 static unsigned int security_command = WIN_SECURITY_UNLOCK;
 
 static char security_password[33];
+#endif // IDE_DRIVE_TASK_NO_DATA
+
 static unsigned long get_powermode  = 0;
 static unsigned long set_apmmode = 0, get_apmmode= 0, apmmode = 0;
 #endif
@@ -968,7 +973,7 @@ void process_dev (char *devname)
 		 && ioctl(fd, HDIO_DRIVE_CMD, &args2))
 			perror(" HDIO_DRIVE_CMD(sleep) failed");
 	}
-#ifdef WIN_SECURITY_FREEZE_LOCK
+#if defined(WIN_SECURITY_FREEZE_LOCK) && defined(IDE_DRIVE_TASK_NO_DATA)
 	if (set_security) {
 #ifndef TASKFILE_OUT
 #define TASKFILE_OUT 4
@@ -1088,7 +1093,7 @@ consecutively in two runs (assuming the segfault isn't followed by an oops.
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
 			perror(" HDIO_DRIVE_CMD(freeze) failed");
 	}
-#endif /* WIN_SECURITY_FREEZE_LOCK */
+#endif // defined(WIN_SECURITY_FREEZE_LOCK) && defined(IDE_DRIVE_TASK_NO_DATA)
 	if (set_seagate) {
 		unsigned char args[4] = {0xfb,0,0,0};
 		if (get_seagate)
@@ -1456,14 +1461,16 @@ void usage_error (int out)
 	" -Z   disable Seagate auto-powersaving mode\n"
 	" -z   re-read partition table\n"
 #endif
-#ifdef WIN_SECURITY_FREEZE_LOCK
+#if defined(WIN_SECURITY_FREEZE_LOCK) && defined(IDE_DRIVE_TASK_NO_DATA)
 	" --security-help  display help for ATA security commands\n"
+#else
+	" (ATA security commands were unavailable at build time)\n"
 #endif
 	"\n");
 	exit(ret);
 }
 
-#ifdef WIN_SECURITY_FREEZE_LOCK
+#if defined(WIN_SECURITY_FREEZE_LOCK) && defined(IDE_DRIVE_TASK_NO_DATA)
 static void security_help (void)
 {
 	printf("\n"
@@ -1943,7 +1950,7 @@ int main(int argc, char **argv)
 					case 'h':
 						usage_error(0);
 						break;
-#ifdef WIN_SECURITY_FREEZE_LOCK
+#if defined(WIN_SECURITY_FREEZE_LOCK) && defined(IDE_DRIVE_TASK_NO_DATA)
 					case '-':
 						p1 = p;		//Save Switch-String
 						while (isgraph(*p))
@@ -1998,7 +2005,7 @@ int main(int argc, char **argv)
 							usage_error(1);
 						}
 						break;
-#endif
+#endif // defined(WIN_SECURITY_FREEZE_LOCK) && defined(IDE_DRIVE_TASK_NO_DATA)
 					default:
 						usage_error(1);
 				}

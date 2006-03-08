@@ -1,3 +1,7 @@
+hdparm-6.6
+	- fix build for Redhat/Fedora systems.
+	- disable security commands when building on Redhat/Fedora,
+	  as they lack the required data structures in the system headers.
 hdparm-6.5
 	- fix -I bugs from version 6.4.
 hdparm-6.4
