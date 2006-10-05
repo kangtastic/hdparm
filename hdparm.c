@@ -26,7 +26,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v6.6"
+#define VERSION "v6.7"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -85,6 +85,7 @@ static unsigned long set_doorlock = 0, get_doorlock = 0, doorlock = 0;
 static unsigned long set_seagate  = 0, get_seagate  = 0;
 static unsigned long set_standbynow = 0, get_standbynow = 0;
 static unsigned long set_sleepnow   = 0, get_sleepnow   = 0;
+static unsigned long get_hitachi_temp = 0;
 
 #ifdef IDE_DRIVE_TASK_NO_DATA
 static unsigned long set_freeze   = 0;
@@ -107,7 +108,7 @@ static char security_password[33];
 
 static unsigned long get_powermode  = 0;
 static unsigned long set_apmmode = 0, get_apmmode= 0, apmmode = 0;
-#endif
+#endif // HDIO_DRIVE_CMD
 #ifdef CDROM_SELECT_SPEED
 static unsigned long set_cdromspeed = 0, cdromspeed = 0;
 #endif /* CDROM_SELECT_SPEED */
@@ -1110,6 +1111,21 @@ consecutively in two runs (assuming the segfault isn't followed by an oops.
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
 			perror(" HDIO_DRIVE_CMD(setidle1) failed");
 	}
+	if (get_hitachi_temp) {
+		unsigned char args[4] = {0xf0,0,0x01,0}; /* "Sense Condition", vendor-specific */
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+			perror(" HDIO_DRIVE_CMD(hitachisensecondition) failed");
+		else {
+			printf(" drive temperature (celsius) is:  ");
+			if (args[2]==0)
+				printf("under -20");
+			else if (args[2]==0xFF)
+				printf("over 107");
+			else
+				printf("%d", args[2]/2-20);
+			printf("\n drive temperature in range:  %s\n", YN(!(args[1]&0x10)) );
+		}
+	}
 
 	if (!flagcount)
 		verbose = 1;
@@ -1237,7 +1253,7 @@ consecutively in two runs (assuming the segfault isn't followed by an oops.
 		unsigned char args[4] = {WIN_CHECKPOWERMODE1,0,0,0};
 		const char *state;
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args)
-		 && (args[0] == WIN_CHECKPOWERMODE2) /* try again with 0x98 */
+		 && (args[0] = WIN_CHECKPOWERMODE2) /* (single =) try again with 0x98 */
 		 && ioctl(fd, HDIO_DRIVE_CMD, &args)) {
 			if (errno != EIO || args[0] != 0 || args[1] != 0)
 				state = "unknown";
@@ -1298,7 +1314,7 @@ consecutively in two runs (assuming the segfault isn't followed by an oops.
 			for(i = 0; i < 0x100; ++i) {
 				__le16_to_cpus(&id[i]);
 			}
-			identify((void *)id, NULL);
+			identify((void *)id);
 		}
 identify_abort:	;
 	}
@@ -1348,6 +1364,7 @@ identify_abort:	;
  #endif /* HDIO_SET_ACOUSTIC */
  #ifdef HDIO_GET_ACOUSTIC
 	if (get_acoustic) {
+		// FIXME:  use Word94 from IDENTIFY for this value
 		if (ioctl(fd, HDIO_GET_ACOUSTIC, &parm)) {
 			perror(" HDIO_GET_ACOUSTIC failed");
 		} else {
@@ -1404,6 +1421,9 @@ void usage_error (int out)
 	" -f   flush buffer cache for device on exit\n"
 	" -g   display drive geometry\n"
 	" -h   display terse usage information\n"
+#ifdef HDIO_DRIVE_CMD
+	" -H   read temperature from drive (Hitachi only)\n"
+#endif
 	" -i   display drive identification\n"
 	" -I   detailed/current information directly from drive\n"
 	" --Istdin  read identify data from stdin as ASCII hex\n"
@@ -1572,7 +1592,7 @@ static int identify_from_stdin (void)
 		b += 5;
 		count -= 5;
 	}
-	identify(sbuf, NULL);
+	identify(sbuf);
 	return 0;
 }
 
@@ -1596,14 +1616,17 @@ int main(int argc, char **argv)
 		if (*p == '-') {
 			if (0 == strcmp(p, "--direct")) {
 				open_flags |= O_DIRECT;
+				++flagcount;
 				continue;
 			}
 			if (0 == strcmp(p, "--Istdin")) {
 				identify_from_stdin();
+				++flagcount;
 				continue;
 			}
 			if (0 == strcmp(p, "--Istdout")) {
 				get_IDentity = 2;
+				++flagcount;
 				continue;
 			}
 			if (!*++p)
@@ -1809,6 +1832,10 @@ int main(int argc, char **argv)
 						get_seagate = noisy;
 						noisy = 1;
 						set_seagate = 1;
+						break;
+					case 'H':
+						get_hitachi_temp = noisy;
+						noisy = 1;
 						break;
 #endif /* HDIO_DRIVE_CMD */
 #ifdef HDIO_GET_KEEPSETTINGS

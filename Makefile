@@ -3,12 +3,12 @@
 # DESTDIR is for non root installs (eg packages, NFS) only!
 DESTDIR =
 
-binprefix = /
-manprefix = /usr/
-exec_prefix = $(binprefix)
+binprefix = 
+manprefix = /usr
+exec_prefix = $(binprefix)/
 sbindir = $(exec_prefix)sbin
-mandir = $(manprefix)share/man
-oldmandir = $(manprefix)man
+mandir = $(manprefix)/share/man
+oldmandir = $(manprefix)/man
 
 ifndef CC
 CC = gcc

@@ -272,11 +272,11 @@ const char *minor_str[MINOR_MAX+2] = {			/* word 81 value: */
 	"ATA/ATAPI-6 T13 1410D revision 1",		/* 0x001c	*/
 	"ATA/ATAPI-7 published, ANSI INCITS 397-2005",	/* 0x001d	*/
 	"ATA/ATAPI-7 T13 1532D revision 0",		/* 0x001e	*/
-	"Reserved"					/* 0x001f	*/
-	"Reserved"					/* 0x0020	*/
+	"Reserved",					/* 0x001f	*/
+	"Reserved",					/* 0x0020	*/
 	"ATA/ATAPI-7 T13 1532D revision 4a",		/* 0x0021	*/
 	"ATA/ATAPI-6 published, ANSI INCITS 361-2002",	/* 0x0022	*/
-	"Reserved"					/* 0x0023-0xfffe*/
+	"Reserved",					/* 0x0023-0xfffe*/
 };
 const char actual_ver[MINOR_MAX+2] = { 
 			/* word 81 value: */
@@ -559,11 +559,9 @@ static int print_transport_type(__u16 major, __u16 minor)
 }
 
 /* our main() routine: */
-void identify (__u16 *id_supplied, const char *devname)
+void identify (__u16 *id_supplied)
 {
 
-	char *id_file = NULL, fmt[]="/proc/ide/%s/identify";
-	FILE *fl;
 	__u16 val[256], ii, jj, kk;
 	__u16 like_std = 1, std = 0, min_std = 0xffff;
 	__u16 dev = NO_DEV, eqpt = NO_DEV;
@@ -573,33 +571,12 @@ void identify (__u16 *id_supplied, const char *devname)
 	__u64 bb, bbbig; /* (:) */
 	int transport;
 
-	if (id_supplied) {
-		memcpy(val, id_supplied, sizeof(val));
-	} else {
-		id_file = calloc(1, strlen(devname)+1+strlen(fmt));
-		sprintf(id_file, fmt, devname);
+	memcpy(val, id_supplied, sizeof(val));
 
-		/* open the file, read in all the info and close it */
-		if (id_file == NULL) {
-			fl = stdin;
-		} else if(NULL == (fl = fopen(id_file, "r"))) {
-     			perror(id_file);
-			exit(errno);
-		}
-		/* calculate checksum over all bytes */
-		for(ii = GEN_CONFIG; ii<=INTEGRITY; ii++) {
-			unsigned int scratch;
-			if(1 != fscanf(fl,"%04x",&scratch)) break;
-			val[ii] = (__u16)scratch;
-			chksum += val[ii] + (val[ii] >> 8);
-		}
-		fclose(fl);  
-		if(ii < (INTEGRITY+1)) {
-			fprintf(stderr,"Input file wrong format or length\n");
-			exit(ii);
-		}
+	/* calculate checksum over all bytes */
+	for(ii = GEN_CONFIG; ii<=INTEGRITY; ii++) {
+		chksum += val[ii] + (val[ii] >> 8);
 	}
-	chksum &= 0xff;
 
 	/* check if we recognise the device type */
 	printf("\n");
@@ -1106,9 +1083,13 @@ void identify (__u16 *id_supplied, const char *devname)
 				printf("\tMaximum current = %uma\n",val[CFA_PWR_MODE] & MAX_AMPS);
 		}
 		if((val[INTEGRITY] & SIG) == SIG_VAL) {
-			printf("Checksum: ");
-			if(chksum) printf("in");
-			printf("correct\n");
+			printf("Checksum: %scorrect", chksum ? "in" : "");
+			if (chksum)
+				printf(" (0x%02x), expected 0x%02x\n", chksum, 0x100 - chksum);
+			putchar('\n');
+		} else {
+			printf("\tIntegrity word not set (found 0x%04x, expected 0x%02x%02x)\n",
+				val[INTEGRITY], 0x100 - chksum, SIG_VAL);
 		}
 	}
 }

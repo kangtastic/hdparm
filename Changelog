@@ -1,3 +1,11 @@
+hdparm-6.7
+	- don't default to "-v" when only new "--" longopts are used.
+	- calculate integrity word if not correct
+	- remove used code/parameter from identify()
+	- fix "(null)" strings from the "Drive conforms to" line of -I
+	- tidied up usage of prefix vars in Makefile
+	- fix bug in -C implementation
+	- new -H flag for (Hitachi) drive temperature
 hdparm-6.6
 	- fix build for Redhat/Fedora systems.
 	- disable security commands when building on Redhat/Fedora,

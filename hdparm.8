@@ -1,4 +1,4 @@
-.TH HDPARM 8 "March 2006" "Version 6.6"
+.TH HDPARM 8 "October 2006" "Version 6.7"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -17,15 +17,12 @@ When no flags are given,
 is assumed.
 .TP
 .I -a 
-Get/set sector count for filesystem read-ahead.  This is used to improve
-performance in sequential reads of large files, by prefetching additional
+Get/set sector count for filesystem (software) read-ahead.
+This is used to improve performance in sequential reads of large files,
+by prefetching additional
 blocks in anticipation of them being needed by the running task.
-In the current kernel version (2.0.10) this has a default setting
-of 8 sectors (4KB).  This value seems good for most purposes,
-but in a system where most file accesses are random seeks,
-a smaller setting might provide better performance.
-Also, many IDE drives also have a separate built-in read-ahead function,
-which alleviates the need for a filesystem read-ahead in many situations.
+Many IDE drives also have a separate built-in read-ahead function,
+which augments this filesystem (software) read-ahead function.
 .TP
 .I -A
 Disable/enable the IDE drive\'s read-lookahead feature (usually ON by default).
@@ -471,6 +468,11 @@ Force a kernel re-read of the partition table of the specified device(s).
 Disable the automatic power-saving function of certain Seagate drives
 (ST3xxx models?), to prevent them from idling/spinning-down
 at inconvenient times.
+.TP
+.I -H
+Read the temperature from some (mostly Hitachi) drives. 
+Also reports if the temperature is within operating condition range
+(this may not be reliable). Does not cause the drive to spin up if idle.
 .TP
 .SH ATA Security Feature Set
 .PP
