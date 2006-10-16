@@ -1,3 +1,5 @@
+hdparm-6.8
+	- improve parsing/operation of --Istdin function
 hdparm-6.7
 	- don't default to "-v" when only new "--" longopts are used.
 	- calculate integrity word if not correct

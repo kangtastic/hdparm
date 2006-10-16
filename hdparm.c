@@ -26,7 +26,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v6.7"
+#define VERSION "v6.8"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -1562,38 +1562,55 @@ static void security_help (void)
 
 static int fromhex (unsigned char c)
 {
-	if (c >= 'a' && c <= 'f')
-		return 10 + (c - 'a');
 	if (c >= '0' && c <= '9')
 		return (c - '0');
+	if (c >= 'a' && c <= 'f')
+		return 10 + (c - 'a');
+	if (c >= 'A' && c <= 'F')
+		return 10 + (c - 'A');
 	fprintf(stderr, "bad char: '%c' 0x%02x\n", c, c);
 	exit(-1);
 }
 
+static int ishex (char c)
+{
+	return ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'));
+}
+
 static int identify_from_stdin (void)
 {
-	unsigned short sbuf[800];
-	unsigned char  buf[1600], *b = (unsigned char *)buf;
-	int i, count;
+	unsigned short sbuf[512];
+	int err, wc = 0;
 
-	// skip leading cruft
-	while (1 == read(0, buf, 1) && (*buf < '0' || *buf > '9') && (*buf < 'a' || *buf > 'f'))
-		while (1 == read(0, buf, 1) && *buf != '\n');
+	do {
+		int digit;
+		char d[4];
 
-	count = read(0, buf+1, 1279);
-	if (count != 1279) {
-		fprintf(stderr, "read(1279 bytes) failed (rc=%d)", count);
-		perror("");
-		exit(errno);
-	}
-	for (i = 0; count >= 4; ++i) {
-		sbuf[i] = (fromhex(b[0]) << 12) | (fromhex(b[1]) << 8) | (fromhex(b[2]) << 4) | fromhex(b[3]);
-		__le16_to_cpus((__u16 *)(&sbuf[i]));
-		b += 5;
-		count -= 5;
-	}
+		if (ishex(d[digit=0] = getchar())
+		 && ishex(d[++digit] = getchar())
+		 && ishex(d[++digit] = getchar())
+		 && ishex(d[++digit] = getchar())) {
+		 	sbuf[wc] = (fromhex(d[0]) << 12) | (fromhex(d[1]) << 8) | (fromhex(d[2]) << 4) | fromhex(d[3]);
+			__le16_to_cpus((__u16 *)(&sbuf[wc]));
+			++wc;
+		} else if (d[digit] == EOF) {
+			goto eof;
+		} else if (wc == 0) {
+			/* skip over leading lines of cruft */
+			do {
+				d[0] = getchar();
+				if (d[0] == EOF)
+					goto eof;
+			} while (d[0] != '\n');
+		}
+	} while (wc < 256);
+	putchar('\n');
 	identify(sbuf);
 	return 0;
+eof:
+	err = errno;
+	perror("failed to read 256 IDENTIFY words from stdin");
+	exit(err);
 }
 
 int main(int argc, char **argv)
