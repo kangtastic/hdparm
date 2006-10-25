@@ -1,4 +1,4 @@
-.TH HDPARM 8 "October 2006" "Version 6.8"
+.TH HDPARM 8 "October 2006" "Version 6.9"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -299,6 +299,18 @@ See the
 .B -U
 option for more information.
 .TP
+.I -s
+Enable/disable the power-on in standby feature, if supported by
+the drive. If enabled, the drive is powered-up in the
+.B standby
+mode to allow the controller to sequence the spin-up of devices.
+This feature is usually disabled and the drive is powered-up in the
+.B active
+mode (see -C above).
+Note that a drive may also allow to enable this feature by a jumper.
+Some SATA drives support the control of this feature by pin 11 of
+the SATA power connector. In these cases, this command may be
+unsupported or may have no effect.
 .I -S
 Set the standby (spindown) timeout for the drive.  This value is used
 by the drive to determine how long to wait (with no disk activity)

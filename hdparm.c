@@ -26,7 +26,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v6.8"
+#define VERSION "v6.9"
 
 #undef DO_FLUSHCACHE		/* under construction: force cache flush on -W0 */
 
@@ -44,7 +44,6 @@ extern const char *minor_str[];
 
 #define TIMING_BUF_MB		2
 #define TIMING_BUF_BYTES	(TIMING_BUF_MB * 1024 * 1024)
-#define BUFCACHE_FACTOR		2
 
 char *progname;
 static int verbose = 0, get_identity = 0, get_geom = 0, noisy = 1, quiet = 0;
@@ -85,6 +84,7 @@ static unsigned long set_doorlock = 0, get_doorlock = 0, doorlock = 0;
 static unsigned long set_seagate  = 0, get_seagate  = 0;
 static unsigned long set_standbynow = 0, get_standbynow = 0;
 static unsigned long set_sleepnow   = 0, get_sleepnow   = 0;
+static unsigned long set_powerup_in_standby = 0, get_powerup_in_standby = 0, powerup_in_standby = 0;
 static unsigned long get_hitachi_temp = 0;
 
 #ifdef IDE_DRIVE_TASK_NO_DATA
@@ -253,6 +253,12 @@ static void dump_identity (const struct hd_driveid *id)
 			if (id->dma_ultra & 0x002)	strcat(umodes,"udma1 ");
 			if (id->dma_ultra & 0x400)	strcat(umodes,"*");
 			if (id->dma_ultra & 0x004)	strcat(umodes,"udma2 ");
+			if (id->dma_ultra & 0x800)	strcat(umodes,"*");
+			if (id->dma_ultra & 0x008)	strcat(umodes,"udma3 ");
+			if (id->dma_ultra & 0x1000)	strcat(umodes,"*");
+			if (id->dma_ultra & 0x010)	strcat(umodes,"udma4 ");
+			if (id->dma_ultra & 0x2000)	strcat(umodes,"*");
+			if (id->dma_ultra & 0x020)	strcat(umodes,"udma5 ");
 #ifdef __NEW_HD_DRIVE_ID
 			if (id->hw_config & 0x2000) {
 #else /* !__NEW_HD_DRIVE_ID */
@@ -426,14 +432,14 @@ void time_cache (int fd)
 
 	elapsed -= elapsed2;
 
-	if ((BUFCACHE_FACTOR * total_MB) >= elapsed)  /* more than 1MB/s */
+	if (total_MB >= elapsed)  /* more than 1MB/s */
 		printf("%3u MB in %5.2f seconds = %6.2f MB/sec\n",
-			(BUFCACHE_FACTOR * total_MB), elapsed,
-			(BUFCACHE_FACTOR * total_MB) / elapsed);
+			total_MB, elapsed,
+			total_MB / elapsed);
 	else
 		printf("%3u MB in %5.2f seconds = %6.2f kB/sec\n",
-			(BUFCACHE_FACTOR * total_MB), elapsed,
-			(BUFCACHE_FACTOR * total_MB) / elapsed * 1024);
+			total_MB, elapsed,
+			total_MB / elapsed * 1024);
 
 	flush_buffer_cache(fd);
 	sleep(1);
@@ -894,6 +900,16 @@ void process_dev (char *devname)
 		}
 		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
 			perror(" HDIO_DRIVE_CMD(setreadahead) failed");
+	}
+	if (set_powerup_in_standby) {
+		unsigned char args[4] = {WIN_SETFEATURES,0,0,0};
+		args[2] = powerup_in_standby ? 0x06 : 0x86;
+		if (get_powerup_in_standby) {
+			printf(" setting power-up in standby to %ld", powerup_in_standby);
+			on_off(powerup_in_standby);
+		}
+		if (ioctl(fd, HDIO_DRIVE_CMD, &args))
+			perror(" HDIO_DRIVE_CMD(powerup_in_standby) failed");
 	}
 	if (set_apmmode) {
 		unsigned char args[4] = {WIN_SETFEATURES,0,0,0};
@@ -1457,6 +1473,7 @@ void usage_error (int out)
 	" -R   register an IDE interface (DANGEROUS)\n"
 #endif
 #ifdef HDIO_DRIVE_CMD
+	" -s   set power-up in standby flag (0/1)\n"
 	" -S   set standby (spindown) timeout\n"
 #endif
 	" -t   perform device read timings\n"
@@ -1597,11 +1614,11 @@ static int identify_from_stdin (void)
 			goto eof;
 		} else if (wc == 0) {
 			/* skip over leading lines of cruft */
-			do {
-				d[0] = getchar();
-				if (d[0] == EOF)
+			while (d[digit] != '\n') {
+				if (d[digit] == EOF)
 					goto eof;
-			} while (d[0] != '\n');
+				d[digit=0] = getchar();
+			};
 		}
 	} while (wc < 256);
 	putchar('\n');
@@ -1609,7 +1626,7 @@ static int identify_from_stdin (void)
 	return 0;
 eof:
 	err = errno;
-	perror("failed to read 256 IDENTIFY words from stdin");
+	fprintf(stderr, "read only %u/256 IDENTIFY words from stdin: %s\n", wc, strerror(err));
 	exit(err);
 }
 
@@ -1736,6 +1753,14 @@ int main(int argc, char **argv)
 						GET_NUMBER(set_io32bit,io32bit);
 						break;
 #ifdef HDIO_DRIVE_CMD
+					case 's':
+						get_powerup_in_standby = noisy;
+						noisy = 1;
+						GET_NUMBER(set_powerup_in_standby,powerup_in_standby);
+						if (!set_powerup_in_standby)
+							fprintf(stderr, "-s: missing value\n");
+						break;
+
 					case 'S':
 						get_standby = noisy;
 						noisy = 1;

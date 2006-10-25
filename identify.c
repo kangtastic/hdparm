@@ -99,6 +99,7 @@
 #define LENGTH_MEDIA            20  /* 20 words (40 bytes or characters)*/
 #define START_MANUF             196 /* media manufacturer I.D. */
 #define LENGTH_MANUF            10  /* 10 words (20 bytes or characters) */
+#define SCT_SUPP		206 /* SMART command transport (SCT) support */
 #define TRANSPORT_MAJOR		222 /* PATA vs. SATA etc.. */
 #define TRANSPORT_MINOR		223 /* minor revision number */
 #define INTEGRITY		255 /* integrity word */
@@ -478,6 +479,26 @@ const char *secu_str[] = {
 #define PWR_MODE_REQ		0x2000  /* 1=CFA power mode req'd by some cmds*/
 #define PWR_MODE_OFF		0x1000  /* 1=CFA power moded disabled */
 #define MAX_AMPS		0x0fff  /* value = max current in ma */
+
+/* word 206: SMART command transport (SCT) */
+static const char *feat_sct_str[16] = {
+	"unknown 206[15]",				/* word 206 bit 15 */
+	"unknown 206[14]",				/* word 206 bit 14 */
+	"unknown 206[13]",				/* word 206 bit 13 */
+	"unknown 206[12]",				/* word 206 bit 12 */
+	"unknown 206[11]",				/* word 206 bit 11 */
+	"unknown 206[10]",				/* word 206 bit 10 */
+	"unknown 206[9]",				/* word 206 bit  9 */
+	"unknown 206[8]",				/* word 206 bit  8 */
+	"unknown 206[7]",				/* word 206 bit  7 */
+	"unknown 206[6]",				/* word 206 bit  6 */
+	"SCT Data Tables (AC5)",			/* word 206 bit  5 */
+	"SCT Features Control (AC4)",			/* word 206 bit  4 */
+	"SCT Error Recovery Control (AC3)",		/* word 206 bit  3 */
+	"SCT LBA Segment Access (AC2)",			/* word 206 bit  2 */
+	"SCT Long Sector Access (AC1)",			/* word 206 bit  1 */
+	"SMART Command Transport (SCT) feature set"	/* word 206 bit  0 */
+};
 
 /* word 255: integrity */
 #define SIG			0x00ff  /* signature location */
@@ -1016,6 +1037,8 @@ void identify (__u16 *id_supplied)
 			print_features(val[SATA_CAP_0],  val[SATA_CAP_0], cap_sata0_str);
 		if (transport == 1 || (val[SATA_SUPP_0] && val[SATA_SUPP_0] != 0xffff))
 			print_features(val[SATA_SUPP_0], val[SATA_EN_0], feat_sata0_str);
+		if (val[SCT_SUPP] & 0x1)
+			print_features(val[SCT_SUPP], val[SCT_SUPP] & 0x3f, feat_sct_str);
 	}
 	if((val[RM_STAT] & RM_STAT_BITS) == RM_STAT_SUP) 
 		printf("\tRemovable Media Status Notification feature set supported\n");

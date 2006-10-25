@@ -1,3 +1,11 @@
+hdparm-6.9
+	- added -s flag to control power-up in standby
+	  (thanks to chrfranke)
+	- make --Istdin more robust
+	- added -I recognition of SMART Command Transport (SCT)
+	   (thanks to chrfranke).
+	- fix X2 over-reporting of -T results
+	- add udma 3/4/5 modes to the -i results
 hdparm-6.8
 	- improve parsing/operation of --Istdin function
 hdparm-6.7

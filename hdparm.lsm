@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	6.8
-Entered-date:	2006-10-16
+Version:	6.9
+Entered-date:	2006-10-25
 Description:	hdparm - get/set hard disk parameters for Linux IDE drives.
+		v6.9 --Istdin fix, new -s flag, new SCT reporting, fixed -T x2 error..
 		v6.8 improve parsing/operation of --Istdin function
 		v6.7 misc fixes, new -H flag, fixed -C flag
 		v6.6 fix build on Redhat/Fedora
@@ -54,7 +55,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		46K hdparm-6.8.tar.gz
+		47K hdparm-6.9.tar.gz
 		1K hdparm.lsm
 Platforms:	Linux, kernels 2.2 through 2.6
 Copying-policy:	BSD License
