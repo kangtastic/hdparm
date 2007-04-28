@@ -1,3 +1,4 @@
+/* identify.c - by Mark Lord (C) 2000-2007 -- freely distributable */
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>

@@ -1,5 +1,5 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark Lord (C) 1994-2005 -- freely distributable */
+/*          - by Mark Lord (C) 1994-2007 -- freely distributable */
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
@@ -24,7 +24,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v7.0"
+#define VERSION "v7.1"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -415,9 +415,9 @@ void time_device (int fd)
 	int shmid;
 	unsigned int max_iterations = 1024, total_MB, iterations;
 
-	//
-	// get device size
-	//
+	/*
+	 * get device size
+	 */
 	if (do_ctimings || do_timings) {
 		unsigned long long blksize;
 		do_flush = 1;
@@ -754,6 +754,8 @@ do_set_security (int fd)
 static void *get_identify_data (int fd, void *prev)
 {
 	static __u8 args[4+512];
+	__u16 *id = (void *)(args + 4);
+	int i;
 
 	if (prev != (void *)-1)
 		return prev;
@@ -770,7 +772,10 @@ static void *get_identify_data (int fd, void *prev)
 			return NULL;
 		}
 	}
-	return args + 4;
+	/* byte-swap the little-endian IDENTIFY data to match byte-order on host CPU */
+	for (i = 0; i < 0x100; ++i)
+		__le16_to_cpus(&id[i]);
+	return id;
 }
 
 void process_dev (char *devname)
@@ -1213,9 +1218,6 @@ void process_dev (char *devname)
 					id += 8;
 				}
 			} else {
-				for (i = 0; i < 0x100; ++i) {
-					__le16_to_cpus(&id[i]);
-				}
 				identify((void *)id);
 			}
 		}
@@ -1326,13 +1328,13 @@ static void usage_help (int rc)
 	" -Q   get/set DMA tagged-queuing depth (if supported)\n"
 	" -r   get/set device  readonly flag (DANGEROUS to set)\n"
 	" -R   register an IDE interface (DANGEROUS)\n"
-	" -s   set power-up in standby flag (0/1)\n"
+	" -s   set power-up in standby flag (0/1) (DANGEROUS)\n"
 	" -S   set standby (spindown) timeout\n"
 	" -t   perform device read timings\n"
 	" -T   perform cache read timings\n"
 	" -u   get/set unmaskirq flag (0/1)\n"
 	" -U   un-register an IDE interface (DANGEROUS)\n"
-	" -v   defaults; same as -mcudkrag for IDE drives\n"
+	" -v   defaults; same as -acdgkmur for IDE drives\n"
 	" -V   display program version and exit immediately\n"
 	" -w   perform device reset (DANGEROUS)\n"
 	" -W   get/set drive write-caching flag (0/1)\n"
@@ -1432,7 +1434,6 @@ identify_from_stdin (void)
 		 && ishex(d[++digit] = getchar())
 		 && ishex(d[++digit] = getchar())) {
 		 	sbuf[wc] = (fromhex(d[0]) << 12) | (fromhex(d[1]) << 8) | (fromhex(d[2]) << 4) | fromhex(d[3]);
-			__le16_to_cpus((__u16 *)(&sbuf[wc]));
 			++wc;
 		} else if (d[digit] == EOF) {
 			goto eof;

@@ -1,4 +1,4 @@
-.TH HDPARM 8 "April 2007" "Version 7.0"
+.TH HDPARM 8 "April 2007" "Version 7.1"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -13,7 +13,7 @@ Some options may work correctly only with the latest kernels.
 For best results, compile hdparm with the include files from the latest kernel source code.
 .SH OPTIONS
 When no flags are given,
-.I -acdgkmnru
+.I -acdgkmur
 is assumed.
 .TP
 .I -a 
@@ -412,7 +412,7 @@ some user-donated scripts for hot-swapping on the UltraBay of a ThinkPad 600E.
 Use at your own risk.
 .TP
 .I -v 
-Display some basic settings, (similar to -mcudkrag for IDE, or -gr for SCSI,
+Display some basic settings, similar to -acdgkmur for IDE.
 This is also the default behaviour when no flags are specified.
 .TP
 .I --verbose 

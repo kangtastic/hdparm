@@ -1,3 +1,8 @@
+hdparm-7.1
+	- big-endian fixes for -I, --Istdin, --Istdout
+	- cody tidying in sgio.c
+	- updated help/manpage for -v
+	- marked -s1 as (DANGEROUS)
 hdparm-7.0
 	- new command-line parser
 	- allow any chars (except 0x00) in security passwords

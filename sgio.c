@@ -1,3 +1,4 @@
+/* sgio.c - by Mark Lord (C) 2007 -- freely distributable */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -196,11 +197,11 @@ int do_drive_cmd (int fd, unsigned char *args)
 	if (args == NULL)
 		goto use_legacy_ioctl;
 	/*
-	 * Reformat and try to issue it via SG_IO:
+	 * Reformat and try to issue via SG_IO:
 	 */
 	if (args[3]) {
 		data_bytes = args[3] * 512;
-		data = args + 4;
+		data       = args + 4;
 	}
 	tf_init(&tf, args[0], 0, args[1]);
 	tf.lob.feat = args[2];
@@ -210,26 +211,21 @@ int do_drive_cmd (int fd, unsigned char *args)
 		tf.lob.lbam  = 0x4f;
 		tf.lob.lbah  = 0xc2;
 	}
+
 	rc = sg16(fd, SG_READ, &tf, data, data_bytes, 0);
-	if (rc == -1) {
-		if (verbose)
-			fprintf(stderr, "SG_IO ATA_16 failed, rc=%d\n", rc);
-		/*
-		 * SG_IO failed, so try the legacy method now:
-		 */
+	if (rc == -1)
 		goto use_legacy_ioctl;
-	}
 	if (rc) {
 		errno = rc;
 		rc = -1;
 	} else if (tf.status & 0x01) {	/* ERR_STAT */
-		if (verbose) {
+		if (verbose)
 			fprintf(stderr, "I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x\n",
 				tf.command, tf.status, tf.error);
-		}
 		errno = EIO;
 		rc = -1;
 	}
+
 	args[0] = tf.status;
 	args[1] = tf.error;
 	args[2] = tf.lob.nsect;
@@ -247,90 +243,60 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	void *data = NULL;
 	unsigned int data_bytes = 0;
 	int rc, rw = SG_READ;
-
 	/*
-	 * Reformat and try to issue it via SG_IO:
+	 * Reformat and try to issue via SG_IO:
 	 */
 	tf_init(&tf, 0, 0, 0);
-	if (r->out_flags.lob.feat)
-		tf.lob.feat = r->lob.feat;
-	if (r->out_flags.lob.lbal)
-		tf.lob.lbal = r->lob.lbal;
-	if (r->out_flags.lob.nsect)
-		tf.lob.nsect = r->lob.nsect;
-	if (r->out_flags.lob.lbam)
-		tf.lob.lbam = r->lob.lbam;
-	if (r->out_flags.lob.lbah)
-		tf.lob.lbah = r->lob.lbah;
-	if (r->out_flags.hob.feat)
-		tf.hob.feat = r->hob.feat;
-	if (r->out_flags.hob.lbal)
-		tf.hob.lbal = r->hob.lbal;
-	if (r->out_flags.hob.nsect)
-		tf.hob.nsect = r->hob.nsect;
-	if (r->out_flags.hob.lbam)
-		tf.hob.lbam = r->hob.lbam;
-	if (r->out_flags.hob.lbah)
-		tf.hob.lbah = r->hob.lbah;
-	if (r->out_flags.lob.dev)
-		tf.dev = r->lob.dev;
-	if (r->out_flags.lob.command)
-		tf.command = r->lob.command;
+	if (r->out_flags.lob.feat)	tf.lob.feat  = r->lob.feat;
+	if (r->out_flags.lob.lbal)	tf.lob.lbal  = r->lob.lbal;
+	if (r->out_flags.lob.nsect)	tf.lob.nsect = r->lob.nsect;
+	if (r->out_flags.lob.lbam)	tf.lob.lbam  = r->lob.lbam;
+	if (r->out_flags.lob.lbah)	tf.lob.lbah  = r->lob.lbah;
+	if (r->out_flags.hob.feat)	tf.hob.feat  = r->hob.feat;
+	if (r->out_flags.hob.lbal)	tf.hob.lbal  = r->hob.lbal;
+	if (r->out_flags.hob.nsect)	tf.hob.nsect = r->hob.nsect;
+	if (r->out_flags.hob.lbam)	tf.hob.lbam  = r->hob.lbam;
+	if (r->out_flags.hob.lbah)	tf.hob.lbah  = r->hob.lbah;
+	if (r->out_flags.lob.dev)	tf.dev       = r->lob.dev;
+	if (r->out_flags.lob.command)	tf.command   = r->lob.command;
 	switch (r->cmd_req) {
 		case TASKFILE_CMD_REQ_OUT:
 			data_bytes = r->out_bytes;
 			data       = r->data;
-			rw = SG_WRITE;
+			rw         = SG_WRITE;
 			break;
 		case TASKFILE_CMD_REQ_IN:
 			data_bytes = r->in_bytes;
 			data       = r->data;
 			break;
 	}
+
 	rc = sg16(fd, rw, &tf, data, data_bytes, timeout_secs);
-	if (rc && verbose)
-		fprintf(stderr, "SG_IO ATA_16 failed, rc=%d\n", rc);
-	if (rc == -1) {
-		/*
-		 * SG_IO failed, so try the legacy method now:
-		 */
+	if (rc == -1)
 		goto use_legacy_ioctl;
-	}
-	if (r->in_flags.lob.feat)
-		r->lob.feat = tf.error;
-	if (r->in_flags.lob.lbal)
-		r->lob.lbal = tf.lob.lbal;
-	if (r->in_flags.lob.nsect)
-		r->lob.nsect = tf.lob.nsect;
-	if (r->in_flags.lob.lbam)
-		r->lob.lbam = tf.lob.lbam;
-	if (r->in_flags.lob.lbah)
-		r->lob.lbah = tf.lob.lbah;
-	if (r->in_flags.hob.feat)
-		r->hob.feat = tf.hob.feat;
-	if (r->in_flags.hob.lbal)
-		r->hob.lbal = tf.hob.lbal;
-	if (r->in_flags.hob.nsect)
-		r->hob.nsect = tf.hob.nsect;
-	if (r->in_flags.hob.lbam)
-		r->hob.lbam = tf.hob.lbam;
-	if (r->in_flags.hob.lbah)
-		r->hob.lbah = tf.hob.lbah;
-	if (r->in_flags.lob.dev)
-		r->lob.dev = tf.dev;
-	if (r->in_flags.lob.command)
-		r->lob.command = tf.status;
 	if (rc) {
 		errno = rc;
 		rc = -1;
 	} else if (tf.status & 0x01) {	/* ERR_STAT */
-		if (verbose) {
+		if (verbose)
 			fprintf(stderr, "I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x\n",
 				tf.command, tf.status, tf.error);
-		}
 		errno = EIO;
 		rc = -1;
 	}
+
+	if (r->in_flags.lob.feat)	r->lob.feat  = tf.error;
+	if (r->in_flags.lob.lbal)	r->lob.lbal  = tf.lob.lbal;
+	if (r->in_flags.lob.nsect)	r->lob.nsect = tf.lob.nsect;
+	if (r->in_flags.lob.lbam)	r->lob.lbam  = tf.lob.lbam;
+	if (r->in_flags.lob.lbah)	r->lob.lbah  = tf.lob.lbah;
+	if (r->in_flags.hob.feat)	r->hob.feat  = tf.hob.feat;
+	if (r->in_flags.hob.lbal)	r->hob.lbal  = tf.hob.lbal;
+	if (r->in_flags.hob.nsect)	r->hob.nsect = tf.hob.nsect;
+	if (r->in_flags.hob.lbam)	r->hob.lbam  = tf.hob.lbam;
+	if (r->in_flags.hob.lbah)	r->hob.lbah  = tf.hob.lbah;
+	if (r->in_flags.lob.dev)	r->lob.dev   = tf.dev;
+	if (r->in_flags.lob.command)	r->lob.command = tf.status;
 	return rc;
 
 use_legacy_ioctl:
