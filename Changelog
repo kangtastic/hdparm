@@ -1,3 +1,19 @@
+hdparm-7.0
+	- new command-line parser
+	- allow any chars (except 0x00) in security passwords
+	- fixed -s manpage format error
+	- updated -W manpage description
+	- major internal rework in hdparm.c
+	- added SET_FEATURES subcommand 0x07 to the -s0 sequence
+	   (the kernel will eventually have to do this automatically)
+	- fixed duplicate display of udma modes 3,4,5 with -i
+	- added Timed-Command-Completion (TLC) data for -I
+	- added support for SG_IO (SAT) ATA_16 command transport
+	- ignore case for longargs (eg. --istdout or --Istdout)
+	- remove dependencies on <linux/hdreg.h>
+	- added query wcache (-W)
+	- enhanced query acoustic (-M)
+	- added kernel_patches directory with patches for ATAPI support
 hdparm-6.9
 	- added -s flag to control power-up in standby
 	  (thanks to chrfranke)

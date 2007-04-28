@@ -330,7 +330,7 @@ static const char unknown[8] = "obsolete";
 //static const char unknown[8] = "unknown";
 #define unknown "unknown-"
 
-static const char *feat_0_str[16] = { 
+static const char *feat_word82_str[16] = { 
 	"obsolete 82[15]",				/* word 82 bit 15: obsolete  */
 	"NOP cmd",					/* word 82 bit 14 */
 	"READ_BUFFER command",				/* word 82 bit 13 */
@@ -348,7 +348,7 @@ static const char *feat_0_str[16] = {
 	"Security Mode feature set",			/* word 82 bit  1 */
 	"SMART feature set"				/* word 82 bit  0 */
 };
-static const char *feat_1_str[16] = { 
+static const char *feat_word83_str[16] = { 
 	NULL,						/* word 83 bit 15: !valid bit */
 	NULL,						/* word 83 bit 14:  valid bit */
 	"FLUSH_CACHE_EXT",				/* word 83 bit 13 */
@@ -366,12 +366,12 @@ static const char *feat_1_str[16] = {
 	"READ/WRITE_DMA_QUEUED",			/* word 83 bit  1 */
 	"DOWNLOAD_MICROCODE"				/* word 83 bit  0 */
 };
-static const char *feat_2_str[16] = { 
+static const char *feat_word84_str[16] = { 
 	NULL,						/* word 84 bit 15: !valid bit */
 	NULL,						/* word 84 bit 14:  valid bit */
 	"IDLE_IMMEDIATE with UNLOAD",			/* word 84 bit 13 */
-	"unknown 84[12]",				/* word 84 bit 12 */
-	"unknown 84[11]",				/* word 84 bit 11 */
+	"Command Completion Time Limit (CCTL)",		/* word 84 bit 12 (ref: dt1696) */
+	"Time Limited Commands (TLC) feature set",	/* word 84 bit 11 (ref: dt1696) */
 	"URG for WRITE_STREAM[_DMA]_EXT",		/* word 84 bit 10 */
 	"URG for READ_STREAM[_DMA]_EXT",		/* word 84 bit  9 */
 	"64-bit World wide name",			/* word 84 bit  8 */
@@ -400,7 +400,7 @@ static const char *feat_3_str[16] = {
 	"{READ,WRITE}_DMA_EXT_GPL commands",		/* word 119 bit  3 */
 	"WRITE_UNCORRECTABLE command",			/* word 119 bit  2 */
 	"Write-Read-Verify feature set",		/* word 119 bit  1 */
-	"unknown 119[0]"				/* word 119 bit  0: reserved for DT2014 */
+	"Disable Data Transfer After Error Detection"	/* word 119 bit  0 (ref: 2014DT)*/
 };
 static const char *cap_sata0_str[16] = { 
 	"unknown 76[15]",				/* word 76 bit 15 */
@@ -431,7 +431,7 @@ static const char *feat_sata0_str[16] = {
 	"unknown 78[8]",				/* word 78 bit  8 */
 	"unknown 78[7]",				/* word 78 bit  7 */
 	"Software settings preservation",		/* word 78 bit  6 */
-	"unknown 78[5]",				/* word 78 bit  5 */
+	"Asynchronous notification (eg. media change)",	/* word 78 bit  5 */
 	"In-order data delivery",			/* word 78 bit  4 */
 	"Device-initiated interface power management",	/* word 78 bit  3 */
 	"DMA Setup Auto-Activate optimization",		/* word 78 bit  2 */
@@ -532,13 +532,23 @@ static void print_features (__u16 supported, __u16 enabled, const char *names[])
 	}
 }
 
-static int print_transport_type(__u16 major, __u16 minor)
+static int print_transport_type(__u16 val[])
 {
+	__u16 major = val[TRANSPORT_MAJOR], minor = val[TRANSPORT_MINOR];
 	unsigned int ttype, subtype, transport = 0;
 
-	if (major == 0x0000 || major == 0xffff)
+	if (major == 0x0000 || major == 0xffff) {
+#if 0
+		printf("\t%-20snot reported","Transport:");
+		if ((val[SATA_CAP_0]  && val[SATA_CAP_0]  != 0xffff)
+		 || (val[SATA_SUPP_0] && val[SATA_SUPP_0] != 0xffff)) {
+			printf(" (serial)");
+		}
+		putchar('\n');
+#endif
 		return transport;
-	printf("Transport: ");
+	}
+	printf("\t%-20s","Transport:");
 	ttype = major >> 12;
 	subtype = major & 0xfff;
 	transport = ttype;
@@ -595,7 +605,7 @@ void identify (__u16 *id_supplied)
 	memcpy(val, id_supplied, sizeof(val));
 
 	/* calculate checksum over all bytes */
-	for(ii = GEN_CONFIG; ii<=INTEGRITY; ii++) {
+	for (ii = GEN_CONFIG; ii<=INTEGRITY; ii++) {
 		chksum += val[ii] + (val[ii] >> 8);
 	}
 
@@ -662,7 +672,7 @@ void identify (__u16 *id_supplied)
 		print_ascii(&val[START_MANUF], LENGTH_MANUF);
 	}
 
-	transport = print_transport_type(val[TRANSPORT_MAJOR], val[TRANSPORT_MINOR]);
+	transport = print_transport_type(val);
 
 	/* major & minor standards version number (Note: these words were not
 	 * defined until ATA-3 & the CDROM std uses different words.) */
@@ -686,7 +696,7 @@ void identify (__u16 *id_supplied)
 			printf("\n\tSupported: ");
 			jj = val[MAJOR] << 1;
 			kk = min_ata_std(like_std);
-			for(ii = 14; ii > kk; ii--) {
+			for (ii = 14; ii > kk; ii--) {
 				if(jj & 0x8000) {
 					printf("%u ", ii);
 					if (ii > like_std) {
@@ -750,7 +760,7 @@ void identify (__u16 *id_supplied)
 			kk = 1;
 			printf("\n\tSupported: CD-ROM ATAPI");
 			jj = val[CDR_MAJOR] >> 1;
-			for(ii = 1; ii <15; ii++) {
+			for (ii = 1; ii <15; ii++) {
 				if(jj & 0x0001) {
 					printf("-%u ", ii);
 				}
@@ -770,7 +780,7 @@ void identify (__u16 *id_supplied)
 	/* more info from the general configuration word */
 	if((eqpt != CDROM) && (like_std == 1)) {
 		jj = val[GEN_CONFIG] >> 1;
-		for(ii = 1; ii < 15; ii++) {
+		for (ii = 1; ii < 15; ii++) {
 			if(jj & 0x0001) printf("\t%s\n",ata1_cfg_str[ii]);
 			jj >>=1;
 		}
@@ -997,14 +1007,14 @@ void identify (__u16 *id_supplied)
 	 * than n (e.g. 3, 2, 1 and 0).  Print all the modes. */
 	if((val[WHATS_VALID] & OK_W64_70) && (val[ADV_PIO_MODES] & PIO_SUP)) {
 		jj = ((val[ADV_PIO_MODES] & PIO_SUP) << 3) | 0x0007;
-		for(ii = 0; ii <= PIO_MODE_MAX ; ii++) {
+		for (ii = 0; ii <= PIO_MODE_MAX ; ii++) {
 			if(jj & 0x0001)
 				printf("pio%d ",ii);
 			jj >>=1;
 		}
 		printf("\n");
 	} else if(((min_std < 5) || (eqpt == CDROM)) && ((val[PIO_MODE]>>8) <= 2)) {
-		for(ii = 0; ii <= val[PIO_MODE]>>8; ii++) {
+		for (ii = 0; ii <= val[PIO_MODE]>>8; ii++) {
 			printf("pio%d ",ii);
 		}
 		printf("\n");
@@ -1022,12 +1032,15 @@ void identify (__u16 *id_supplied)
 
 	if((val[CMDS_SUPP_1] & VALID) == VALID_VAL){
 		printf("Commands/features:\n\tEnabled\tSupported:\n");
-		print_features(val[CMDS_SUPP_0] & 0x7fff, val[CMDS_EN_0], feat_0_str);
+		print_features(val[CMDS_SUPP_0] & 0x7fff, val[CMDS_EN_0], feat_word82_str);
 		if( (val[CMDS_SUPP_1] &  VALID) == VALID_VAL)
-			print_features(val[CMDS_SUPP_1] & 0x3fff, val[CMDS_EN_1], feat_1_str);
+			print_features(val[CMDS_SUPP_1] & 0x3fff, val[CMDS_EN_1], feat_word83_str);
 		if( (val[CMDS_SUPP_2] &  VALID) == VALID_VAL
-		 && (val[CMDS_EN_2]  &   VALID) == VALID_VAL)
-			print_features(val[CMDS_SUPP_2] & 0x3fff, val[CMDS_EN_2], feat_2_str);
+		 && (val[CMDS_EN_2]  &   VALID) == VALID_VAL) {
+			print_features(val[CMDS_SUPP_2] & 0x3fff, val[CMDS_EN_2], feat_word84_str);
+			if ((val[CMDS_SUPP_2] & 0x1800) == 0x1800 && val[116] && val[116] != 0xffff)
+				printf("                (%u msec for TLC completion timer)\n", 10 * (unsigned int)(val[116]));
+		}
 		if( (val[CMDS_SUPP_1] &  VALID) == VALID_VAL
 		 && (val[CMDS_EN_1]   & 0x8000) == 0x8000
 		 && (val[CMDS_SUPP_3] &  VALID) == VALID_VAL
@@ -1044,14 +1057,14 @@ void identify (__u16 *id_supplied)
 		printf("\tRemovable Media Status Notification feature set supported\n");
 
 	/* security */
-	if((eqpt != CDROM) && (like_std > 3) && 
-	   (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME])) {
+	if((eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
+	{
 		printf("Security: \n");
 		if(val[PSWD_CODE] && (val[PSWD_CODE] != NOVAL_1))
 			printf("\tMaster password revision code = %u\n",val[PSWD_CODE]);
 		jj = val[SECU_STATUS];
 		if(jj) {
-			for(ii = 0; ii < NUM_SECU_STR; ii++) {
+			for (ii = 0; ii < NUM_SECU_STR; ii++) {
 				if(!(jj & 0x0001)) printf("\tnot\t");
 				else		   printf("\t\t");
 				printf("%s\n",secu_str[ii]);
@@ -1120,7 +1133,7 @@ void identify (__u16 *id_supplied)
 __u8 mode_loop(__u16 mode_sup, __u16 mode_sel, int cc, __u8 *have_mode) {
 	__u16 ii;
 	__u8 err_dma = 0;
-	for(ii = 0; ii <= MODE_MAX; ii++) {
+	for (ii = 0; ii <= MODE_MAX; ii++) {
 		if(mode_sel & 0x0001) {
 			printf("*%cdma%u ",cc,ii);
 			if(*have_mode) err_dma = 1;
@@ -1138,7 +1151,7 @@ void print_ascii(__u16 *p, __u8 length) {
 	char cl;
 	
 	/* find first non-space & print it */
-	for(ii = 0; ii< length; ii++) {
+	for (ii = 0; ii< length; ii++) {
 		if(((char) 0x00ff&((*p)>>8)) != ' ') break;
 		if((cl = (char) 0x00ff&(*p)) != ' ') {
 			if(cl != '\0') printf("%c",cl);
@@ -1148,8 +1161,8 @@ void print_ascii(__u16 *p, __u8 length) {
 		p++;
 	}
 	/* print the rest */
-	for(; ii< length; ii++) {
-		unsigned char c;
+	for (; ii < length; ii++) {
+		__u8 c;
 		/* some older devices have NULLs */
 		c = (*p) >> 8;
 		if (c) putchar(c);

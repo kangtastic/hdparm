@@ -1,0 +1,24 @@
+The new "libata" SATA/IDE drivers in the Linux-2.6.xx kerrnels
+do not yet support use of hdparm on ATAPI devices.
+
+This directory includes two kernel patches that can
+be applied together (in sequence) to add support to
+the kernel for using hdparm with ATAPI (CD/DVD/tape) drives.
+
+	01_libata_cmd_len_check.patch
+	02_libata_atapi_ata16.patch
+
+Both of these are required for any kernel prior to 2.6.22,
+and only the second one should be necessary for later kernels.
+
+* * * 
+
+There is also another patch in this directory to enable "libata"
+to deal with drives that have been set for "power-up in standby"
+(eg. using "hdparm -s1").  Without this patch, such drives become
+expensive paperweights, at least until booted under a kernel
+that has had the patch applied.
+
+	03_libata_standby_spinup.patch
+
+* * *

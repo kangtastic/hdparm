@@ -1,4 +1,4 @@
-.TH HDPARM 8 "October 2006" "Version 6.9"
+.TH HDPARM 8 "April 2007" "Version 7.0"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -25,7 +25,7 @@ Many IDE drives also have a separate built-in read-ahead function,
 which augments this filesystem (software) read-ahead function.
 .TP
 .I -A
-Disable/enable the IDE drive\'s read-lookahead feature (usually ON by default).
+Get/set the IDE drive\'s read-lookahead feature (usually ON by default).
 Usage:
 .B -A0
 (disable) or
@@ -104,7 +104,11 @@ of raw device and driver performance.
 Enable/disable the on-drive defect management feature,
 whereby the drive firmware tries to automatically manage
 defective sectors by relocating them to "spare" sectors
-reserved by the factory for such.
+reserved by the factory for such.  Control of this feature
+via the
+.I -D
+flag is not supported for most modern drives
+since ATA-4; thus this command may fail.
 .TP
 .I -E
 Set cdrom speed.  This is NOT necessary for regular operation,
@@ -151,7 +155,7 @@ more detail than with the older
 flag.
 .TP
 .I --Istdin
-This is a special "no seatbelts" variation on the
+This is a special variation on the
 .B -I
 option,
 which accepts a drive identification block as standard input
@@ -165,10 +169,13 @@ option described below.
 This variation is designed for use with collected "libraries" of drive
 identification information, and can also be used on ATAPI
 drives which may give media errors with the standard mechanism.
+When
+.B --Istdin
+is used, it must be the *only* parameter given.
 .TP
 .I --Istdout
-This option simply dumps the identify data in hex to stdout,
-in a format similar to that from /proc/, and suitable for
+This option dumps the drive's identify data in hex to stdout,
+in a format similar to that from /proc/ide/*/identify, and suitable for
 later use with the
 .I --Istdin
 option.
@@ -269,11 +276,12 @@ and an unsuccessful outcome may result in
 .TP
 .I -P
 Set the maximum sector count for the drive\'s internal prefetch mechanism.
-Not all drives support this feature.
+Not all drives support this feature, and it was dropped from the offical spec
+as of ATA-4.
 .TP
 .I -q
-Handle the next flag quietly, suppressing normal output.  This is useful
-for reducing screen clutter when running from system startup scripts.
+Handle the next flag quietly, suppressing normal output (but not error messages).
+This is useful for reducing screen clutter when running from system startup scripts.
 Not applicable to the
 .I -i
 or
@@ -311,6 +319,7 @@ Note that a drive may also allow to enable this feature by a jumper.
 Some SATA drives support the control of this feature by pin 11 of
 the SATA power connector. In these cases, this command may be
 unsupported or may have no effect.
+.TP
 .I -S
 Set the standby (spindown) timeout for the drive.  This value is used
 by the drive to determine how long to wait (with no disk activity)
@@ -403,8 +412,11 @@ some user-donated scripts for hot-swapping on the UltraBay of a ThinkPad 600E.
 Use at your own risk.
 .TP
 .I -v 
-Display all settings, except -i (same as -acdgkmnru for IDE, -gr for SCSI or
--adgr for XT).  This is also the default behaviour when no flags are specified.
+Display some basic settings, (similar to -mcudkrag for IDE, or -gr for SCSI,
+This is also the default behaviour when no flags are specified.
+.TP
+.I --verbose 
+Display extra diagnostics from some commands.
 .TP
 .I -w
 Perform a device reset (DANGEROUS).  Do NOT use this option.
@@ -412,8 +424,7 @@ It exists for unlikely situations where a reboot might otherwise be
 required to get a confused drive back into a useable state.
 .TP
 .I -W
-Disable/enable the IDE drive\'s write-caching feature
-(default state is undeterminable; manufacturer/model specific).
+Get/set the IDE/SATA drive\'s write-caching feature.
 .TP
 .I -x 
 Tristate device for hotswap (DANGEROUS).

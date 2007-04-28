@@ -15,17 +15,19 @@ CC = gcc
 endif
 CFLAGS := -O2 -W -Wall -Wbad-function-cast -Wcast-align -Wpointer-arith -Wcast-qual -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -fkeep-inline-functions -Wwrite-strings -Waggregate-return -Wnested-externs -Wtrigraphs $(CFLAGS)
 
-
 LDFLAGS = -s
 INSTALL = install
 INSTALL_DATA = $(INSTALL) -m 644
 INSTALL_DIR = $(INSTALL) -m 755 -d
 INSTALL_PROGRAM = $(INSTALL)
 
+OBJS = hdparm.o identify.o sgio.o
+
 all: hdparm
 
-hdparm: hdparm.o identify.o hdparm.h
-	$(CC) $(LDFLAGS) -o hdparm hdparm.o identify.o
+hdparm: hdparm.h $(OBJS)
+	$(CC) $(LDFLAGS) -o hdparm $(OBJS)
+	strip hdparm
  
 install: all hdparm.8
 	if [ ! -z $(DESTDIR) ]; then $(INSTALL_DIR) $(DESTDIR) ; fi
@@ -40,5 +42,5 @@ install: all hdparm.8
 	elif [ -d $(DESTDIR)$(oldmandir) ]; then $(INSTALL_DATA) -D hdparm.8 $(DESTDIR)$(oldmandir)/man8/hdparm.8 ; fi
 
 clean:
-	rm -f hdparm *.o core
+	rm -f hdparm $(OBJS) core
 
