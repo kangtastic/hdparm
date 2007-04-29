@@ -18,7 +18,7 @@ to deal with drives that have been set for "power-up in standby"
 (eg. using "hdparm -s1").  Without this patch, such drives become
 expensive paperweights, at least until booted under a kernel
 that has had the patch applied.  This patch is needed for all
-kernels prior to 2.6.22.
+kernels prior to 2.6.22, but not with 2.6.22 or later.
 
 	03_libata_standby_spinup.patch
 

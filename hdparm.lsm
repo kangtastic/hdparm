@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	7.1
-Entered-date:	2007-04-28
+Version:	7.2
+Entered-date:	2007-04-29
 Description:	hdparm - get/set hard disk parameters for Linux IDE drives.
+		v7.2 fixed breakage when used with old IDE driver
 		v7.1 big-endian fixes for -I, --Istdin, --Istdout
 		v7.0 major overhaul, proper SATA support, new features and tweaks
 		v6.9 --Istdin fix, new -s flag, new SCT reporting, fixed -T x2 error..

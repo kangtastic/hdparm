@@ -1,3 +1,8 @@
+hdparm-7.2
+	- tweak -C
+	- added more debug info from --verbose
+	- added --drq-hsm-error to test libata EH (VERY DANGEROUS, do not use)
+	- fixed breakage when used with old IDE driver
 hdparm-7.1
 	- big-endian fixes for -I, --Istdin, --Istdout
 	- cody tidying in sgio.c

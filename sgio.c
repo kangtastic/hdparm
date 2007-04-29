@@ -29,9 +29,9 @@ extern int verbose;
 #define SG_ATA_PROTO_NON_DATA	( 3 << 1)
 #define SG_ATA_PROTO_PIO_IN	( 4 << 1)
 #define SG_ATA_PROTO_PIO_OUT	( 5 << 1)
-#define SG_ATA_PROTO_DMA		( 6 << 1)
-#define SG_ATA_PROTO_UDMA_IN	(11 << 1)	/* not yet supported in libata */
-#define SG_ATA_PROTO_UDMA_OUT	(12 << 1)	/* not yet supported in libata */
+#define SG_ATA_PROTO_DMA	( 6 << 1)
+#define SG_ATA_PROTO_UDMA_IN	(11 << 1) /* not yet supported in libata */
+#define SG_ATA_PROTO_UDMA_OUT	(12 << 1) /* not yet supported in libata */
 
 #define ATA_USING_LBA		(1 << 6)
 
@@ -64,17 +64,18 @@ void tf_init (struct ata_tf *tf, __u8 ata_op, __u64 lba, unsigned int nsect)
 
 	memset(tf, 0, sizeof(*tf));
 	tf->command = ata_op;
+	tf->dev     = ATA_USING_LBA;
 	if (lba) {
 		tf->lob.lbal = lba;
 		tf->lob.lbam = lba >>  8;
 		tf->lob.lbah = lba >> 16;
 		if ((lba & ~lba28_mask) == 0) {
-			tf->dev = ((lba >> 24) & 0x0f) | ATA_USING_LBA;
+			tf->dev |= (lba >> 24) & 0x0f;
 		} else {
-			tf->dev = ATA_USING_LBA;
 			tf->hob.lbal = lba >> 24;
 			tf->hob.lbam = lba >> 32;
 			tf->hob.lbah = lba >> 36;
+			tf->is_lba48 = 1;
 		}
 	}
 	if (nsect) {
@@ -148,20 +149,20 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	io_hdr.pack_id		= tf_to_lba(tf);
 	io_hdr.timeout		= (timeout_secs ? timeout_secs : 5) * 1000; /* msecs */
 
-	if (ioctl(fd, SG_IO, &io_hdr) < 0) {
+	if (ioctl(fd, SG_IO, &io_hdr) == -1) {
 		if (verbose)
 			perror("ioctl(fd,SG_IO)");
 		return -1;	/* SG_IO not supported */
 	}
-
+	if (verbose) {
+		fprintf(stderr, "SG_IO: ATA_16 status=0x%x, host_status=0x%x, driver_status=0x%x\n",
+			io_hdr.status, io_hdr.host_status, io_hdr.driver_status);
+	}
 	if (io_hdr.host_status || io_hdr.driver_status != SG_DRIVER_SENSE
 	 || (io_hdr.status && io_hdr.status != SG_CHECK_CONDITION))
 	{
-		if (verbose) {
-			fprintf(stderr, "SG_IO: ATA_16 status=0x%x, host_status=0x%x, driver_status=0x%x\n",
-				io_hdr.status, io_hdr.host_status, io_hdr.driver_status);
-		}
-		return EIO;
+	  	errno = EIO;
+		return -1;
 	}
 
 	if (sb[0] != 0x72 || sb[7] < 14)
@@ -184,6 +185,8 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 		tf->hob.lbam  = desc[ 8];
 		tf->hob.lbah  = desc[10];
 	}
+	if (verbose)
+		fprintf(stderr, "      ATA_16 tf->status=0x%02x tf->error=0x%02x\n", tf->status, tf->error);
 	return 0;
 }
 

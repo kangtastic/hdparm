@@ -86,7 +86,7 @@ static char security_password[33];
 static int get_powermode  = 0, set_powermode = 0;
 static int set_apmmode = 0, get_apmmode= 0, apmmode = 0;
 static int get_cdromspeed = 0, set_cdromspeed = 0, cdromspeed = 0;
-static int do_IDentity = 0;
+static int do_IDentity = 0, do_drq_hsm_error = 0;
 static int get_unregister = 0, set_unregister = 0, unregister = 0;
 static int	hwif = 0;
 static int	scan_hwif = 0;
@@ -751,6 +751,8 @@ do_set_security (int fd)
 		exit(err);
 }
 
+static __u8 last_identify_op = 0;
+
 static void *get_identify_data (int fd, void *prev)
 {
 	static __u8 args[4+512];
@@ -760,10 +762,12 @@ static void *get_identify_data (int fd, void *prev)
 	if (prev != (void *)-1)
 		return prev;
 	memset(args, 0, sizeof(args));
-	args[0] = ATA_OP_IDENTIFY;
+	last_identify_op = ATA_OP_IDENTIFY;
+	args[0] = last_identify_op;
 	args[3] = 1;
 	if (do_drive_cmd(fd, args)) {
-		args[0] = ATA_OP_PIDENTIFY;
+		last_identify_op = ATA_OP_PIDENTIFY;
+		args[0] = last_identify_op;
 		args[1] = 0;
 		args[2] = 0;
 		args[3] = 1;
@@ -1064,6 +1068,20 @@ void process_dev (char *devname)
 		if (ioctl(fd, HDIO_SET_BUSSTATE, busstate))
 			perror(" HDIO_SET_BUSSTATE failed");
 	}
+	if (do_drq_hsm_error) {
+		id = get_identify_data(fd, id);
+		if (id) {
+			__u8 args[4] = {0,0,0,0};
+			args[0] = last_identify_op;
+			sync();
+			printf(" triggering \"stuck DRQ\" host state machine error\n");
+			sync();
+			sleep(1);
+			do_drive_cmd(fd, args);
+			perror("do_drq_hsm_error");
+			fprintf(stderr, "ata status=0x%02x ata error=0x%02x\n", args[0], args[1]);
+		}
+	}
 	if (get_hitachi_temp) {
 		__u8 args[4] = {0xf0,0,0x01,0}; /* "Sense Condition", vendor-specific */
 		if (do_drive_cmd(fd, args))
@@ -1184,14 +1202,10 @@ void process_dev (char *devname)
 		const char *state;
 		if (do_drive_cmd(fd, args)
 		 && (args[0] = ATA_OP_CHECKPOWERMODE2) /* (single =) try again with 0x98 */
-		 && do_drive_cmd(fd, args)) {
-			if (errno != EIO || args[0] != 0 || args[1] != 0)
-				state = "unknown";
-			else
-				state = "sleeping";
-		} else {
+		 && do_drive_cmd(fd, args))
+			state = "unknown";
+		else
 			state = (args[2] == 255) ? "active/idle" : "standby";
-		}
 		printf(" drive state is:  %s\n", state);
 	}
 	if (do_identity) {
@@ -1349,6 +1363,7 @@ static void usage_help (int rc)
 	" --Istdout        write identify data to stdout as ASCII hex\n"
 	" --verbose        display extra diagnostics from some commands\n"
 	" --security-help  display help for ATA security commands\n"
+	" --drq_hsm_error  crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
 	"\n");
 	exit(rc);
 }
@@ -1580,6 +1595,8 @@ get_longarg (void)
 		--num_flags_processed;	/* doesn't count as an action flag */
 	} else if (0 == strcasecmp(name, "direct")) {
 		open_flags |= O_DIRECT;
+	} else if (0 == strcasecmp(name, "drq-hsm-error")) {
+		do_drq_hsm_error = 1;
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
 	} else if (0 == strcasecmp(name, "security-mode")) {
