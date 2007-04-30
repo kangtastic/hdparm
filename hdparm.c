@@ -24,7 +24,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v7.1"
+#define VERSION "v7.3"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -396,10 +396,12 @@ static int do_blkgetsize (int fd, unsigned long long *blksize64)
 	int		rc;
 	unsigned int	blksize32 = 0;
 
+#ifdef BLKGETSIZE64
 	if (0 == ioctl(fd, BLKGETSIZE64, blksize64)) {	// returns bytes
 		*blksize64 /= 512;
 		return 0;
 	}
+#endif
 	rc = ioctl(fd, BLKGETSIZE, &blksize32);	// returns sectors
 	if (rc)
 		perror(" BLKGETSIZE failed");
@@ -1363,7 +1365,7 @@ static void usage_help (int rc)
 	" --Istdout        write identify data to stdout as ASCII hex\n"
 	" --verbose        display extra diagnostics from some commands\n"
 	" --security-help  display help for ATA security commands\n"
-	" --drq_hsm_error  crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
+	" --drq-hsm-error  crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
 	"\n");
 	exit(rc);
 }

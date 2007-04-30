@@ -1,4 +1,4 @@
-.TH HDPARM 8 "April 2007" "Version 7.1"
+.TH HDPARM 8 "April 2007" "Version 7.3"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -8,9 +8,9 @@ hdparm \- get/set hard disk parameters
 .SH DESCRIPTION
 .BI hdparm
 provides a command line interface to various hard disk ioctls
-supported by the stock Linux ATA/IDE device driver subsystem.
+supported by the Linux SATA/PATA/SAS "libata" subsystem
+and the older IDE driver subsystem.
 Some options may work correctly only with the latest kernels.
-For best results, compile hdparm with the include files from the latest kernel source code.
 .SH OPTIONS
 When no flags are given,
 .I -acdgkmur
@@ -99,6 +99,16 @@ to go directly from the drive into hdparm's buffers, using so-called
 "raw" I/O.  In many cases, this can produce results that appear
 much faster than the usual page cache method, giving a better indication
 of raw device and driver performance.
+.TP
+.I --drq-hsm-error
+VERY DANGEROUS, DON'T EVEN THINK ABOUT USING IT.
+This flag causes hdparm to issue an IDENTIFY command
+to the kernel, but incorrectly marked as a "non-data" command.
+This results in the drive being left with its DataReQust(DRQ) line
+"stuck" high.  This confuses the kernel drivers, and may crash the system
+immediately with massive data loss.  The option exists to help in testing
+and fortifying the kernel against similar real-world drive malfunctions.
+VERY DANGEROUS, DO NOT USE!!
 .TP
 .I -D
 Enable/disable the on-drive defect management feature,
@@ -606,7 +616,7 @@ PIO data out security commands by Leonard den Ottolander
 Parts by Benjamin Benz <bbe@heise.de> and others.
 .SH SEE ALSO
 .B http://www.t13.org/
-Technical Committee T13 ATA Attachment.
+Technical Committee T13 AT Attachment (ATA) Interface.
 .PP
 .B http://www.serialata.org/
 Serial ATA International Organization.

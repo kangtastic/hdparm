@@ -99,16 +99,36 @@ __u64 tf_to_lba (struct ata_tf *tf)
 	return lba64;
 }
 
-static int bad_sense (unsigned char *sb, int len)
+static void dump_bytes (const char *prefix, unsigned char *p, int len)
 {
 	int i;
 
-	fprintf(stderr, "SG_IO: bad/missing ATA_16 sense data:");
+	if (prefix)
+		fprintf(stderr, "%s: ", prefix);
 	for (i = 0; i < len; ++i)
-		fprintf(stderr, " %02x", sb[i]);
+		fprintf(stderr, " %02x", p[i]);
 	fprintf(stderr, "\n");
+}
+
+static int bad_sense (unsigned char *sb, int len)
+{
+	dump_bytes("SG_IO: bad/missing ATA_16 sense data:", sb, len);
 	return EIO;
 }
+
+enum {
+	SG_CDB2_TLEN_NODATA	= 0 << 0,
+	SG_CDB2_TLEN_FEAT	= 1 << 0,
+	SG_CDB2_TLEN_NSECT	= 2 << 0,
+
+	SG_CDB2_TLEN_BYTES	= 0 << 2,
+	SG_CDB2_TLEN_SECTORS	= 1 << 2,
+
+	SG_CDB2_TDIR_TO_DEV	= 0 << 3,
+	SG_CDB2_TDIR_FROM_DEV	= 1 << 3,
+
+	SG_CDB2_CHECK_COND	= 1 << 5,
+};
 
 int sg16 (int fd, int rw, struct ata_tf *tf,
 	void *data, unsigned int data_bytes, unsigned int timeout_secs)
@@ -120,7 +140,11 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	memset(&cdb, 0, sizeof(cdb));
 	cdb[ 0] = SG_ATA_16;
 	cdb[ 1] = data ? (rw ? SG_ATA_PROTO_PIO_OUT : SG_ATA_PROTO_PIO_IN) : SG_ATA_PROTO_NON_DATA;
-	cdb[ 2] = 0x20;	/* to request sense data on completion */
+	cdb[ 2] = SG_CDB2_CHECK_COND;
+	if (data) {
+		cdb[2] |= SG_CDB2_TLEN_NSECT | SG_CDB2_TLEN_SECTORS;
+		cdb[2] |= rw ? SG_CDB2_TDIR_TO_DEV : SG_CDB2_TDIR_FROM_DEV;
+	}
 	cdb[ 4] = tf->lob.feat;
 	cdb[ 6] = tf->lob.nsect;
 	cdb[ 8] = tf->lob.lbal;
@@ -149,6 +173,8 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	io_hdr.pack_id		= tf_to_lba(tf);
 	io_hdr.timeout		= (timeout_secs ? timeout_secs : 5) * 1000; /* msecs */
 
+	if (verbose)
+		dump_bytes("outgoing cdb", cdb, sizeof(cdb));
 	if (ioctl(fd, SG_IO, &io_hdr) == -1) {
 		if (verbose)
 			perror("ioctl(fd,SG_IO)");
