@@ -477,9 +477,9 @@ const char *secu_str[] = {
 
 /* word 160: CFA power mode */
 #define VALID_W160		0x8000  /* 1=word valid */
-#define PWR_MODE_REQ		0x2000  /* 1=CFA power mode req'd by some cmds*/
-#define PWR_MODE_OFF		0x1000  /* 1=CFA power moded disabled */
-#define MAX_AMPS		0x0fff  /* value = max current in ma */
+#define PWR_MODE_REQ		0x2000  /* 1=CFA power level 1 is NOT supported */
+#define PWR_MODE_OFF		0x1000  /* 1=CFA power level 1 commands are DISABLED */
+#define MAX_AMPS		0x0fff  /* value = max current in milli-amperes (mA) */
 
 /* word 206: SMART command transport (SCT) */
 static const char *feat_sct_str[16] = {
@@ -601,7 +601,7 @@ void identify (__u16 *id_supplied)
 	__u8  chksum = 0;
 	__u32 ll, mm, nn;
 	__u64 bb, bbbig; /* (:) */
-	int transport;
+	int transport, is_cfa = 0;
 
 	memcpy(val, id_supplied, sizeof(val));
 
@@ -617,6 +617,7 @@ void identify (__u16 *id_supplied)
 		dev = ATA_DEV;
 		printf("ATA device, with ");
 	} else if(val[GEN_CONFIG]==CFA_SUPPORT_VAL) {
+		is_cfa = 1;
 		dev = ATA_DEV;
 		like_std = 4;
 		printf("CompactFlash ATA device, with ");
@@ -1106,26 +1107,91 @@ void identify (__u16 *id_supplied)
 		printf("\n");
 	}
 
-	/* more stuff from std 5 */
-	if((like_std > 4) && (eqpt != CDROM)) {
-		if(val[CFA_PWR_MODE] & VALID_W160) {
-			printf("CFA power mode 1:\n\t");
-			if(val[CFA_PWR_MODE] & PWR_MODE_OFF) printf("dis");
-			else				     printf("en");
-			printf("abled");
-			if(val[CFA_PWR_MODE] & PWR_MODE_REQ)
-				printf(" and required by some commands");
-			printf("\n");
-			if(val[CFA_PWR_MODE] & MAX_AMPS)
-				printf("\tMaximum current = %uma\n",val[CFA_PWR_MODE] & MAX_AMPS);
+	if (is_cfa) {
+		unsigned int mode, max, selected;
+		char modes[256];
+		modes[0] = '\0';
+
+		// CFA pio5-6:
+		max = val[163] & 7;
+		if (max == 1 || max == 2) {
+			selected = (val[163] >> 6) & 7;
+			for (mode = 1; mode <= max; ++mode) {
+				if (mode == selected)
+					strcat(modes, "*");
+				sprintf(modes + strlen(modes), "pio%u ", mode + 4);
+			}
 		}
-		if((val[INTEGRITY] & SIG) == SIG_VAL) {
+		// CFA mdma3-4:
+		max = (val[163] >> 3) & 7;
+		if (max == 1 || max == 2) {
+			selected = (val[163] >> 9) & 7;
+			for (mode = 1; mode <= max; ++mode) {
+				if (mode == selected)
+					strcat(modes, "*");
+				sprintf(modes + strlen(modes), "mdma%u ", mode + 4);
+			}
+		}
+		if (val[164] & 0x8000)
+		{
+			static const unsigned char io_times [4] = {255,120,100,80};
+			static const unsigned char mem_times[4] = {250,120,100,80};
+			max = val[164] & 7;
+			if (max <= 3)
+				printf("\t\tCFA max advanced io_udma cycle time: %uns\n", io_times[max]);
+			max = (val[164] >> 3) & 7;
+			if (max <= 3)
+				printf("\t\tCFA max advanced mem_udma cycle time: %uns\n", mem_times[max]);
+			// CFA ioport dma0-6:
+			max = (val[164] >> 6) & 7;
+			if (max <= 6) {
+				selected = (val[164] >> 12) & 7;
+				for (mode = 0; mode <= max; ++mode) {
+					if (mode == selected)
+						strcat(modes, "*");
+					sprintf(modes + strlen(modes), "io_udma%u ", mode + 4);
+				}
+			}
+			// CFA memory udma0-6:
+			max = (val[164] >> 9) & 7;
+			if (max <= 6) {
+				selected = (val[164] >> 12) & 7;
+				for (mode = 0; mode <= max; ++mode) {
+					if (mode == selected)
+						strcat(modes, "*");
+					sprintf(modes + strlen(modes), "mem_udma%u ", mode + 4);
+				}
+			}
+		}
+		if (modes[0])
+			printf("\t   *\tCFA advanced modes: %s\n", modes);
+
+		if(val[CFA_PWR_MODE] & VALID_W160) {
+			if((val[CFA_PWR_MODE] & PWR_MODE_REQ) == 0)
+				printf("   *");
+			printf("\tCFA Power Level 1 ");
+			if(val[CFA_PWR_MODE] & PWR_MODE_REQ)
+				printf(" not supported");
+			if(val[CFA_PWR_MODE] & MAX_AMPS)
+				printf(" (max %umA)", val[CFA_PWR_MODE] & MAX_AMPS);
+			printf("\n");
+		}
+		//else printf("\t\tCFA Power modes not reported\n");
+		if (val[162] && val[162] != 0xffff) {
+			if (val[162] & 1)
+				printf("\t\tKey Management (CPRM) feature set\n");
+		}
+	}
+
+	/* more stuff from std 5 */
+	if ((like_std > 4) && (eqpt != CDROM)) {
+		if ((val[INTEGRITY] & SIG) == SIG_VAL) {
 			printf("Checksum: %scorrect", chksum ? "in" : "");
 			if (chksum)
 				printf(" (0x%02x), expected 0x%02x\n", chksum, 0x100 - chksum);
 			putchar('\n');
 		} else {
-			printf("\tIntegrity word not set (found 0x%04x, expected 0x%02x%02x)\n",
+			printf("Integrity word not set (found 0x%04x, expected 0x%02x%02x)\n",
 				val[INTEGRITY], 0x100 - chksum, SIG_VAL);
 		}
 	}

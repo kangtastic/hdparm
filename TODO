@@ -15,3 +15,8 @@ Mark's TO-DO list for hdparm:
 
 - Add utility to recover data from a drive with bad sectors.
 
+- Use SCSI Inquiry for -I on ATAPI, especially with libata.
+
+- Use FLUSH_CACHE_EXT by default; fall back to FLUSH_CACHE if rejected
+
+- Add separate flag for "flush cache" by itself

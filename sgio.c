@@ -161,6 +161,7 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 		cdb[11]  = tf->hob.lbah;
 	}
 
+	memset(&sb,     0, sizeof(sb));
 	memset(&io_hdr, 0, sizeof(struct sg_io_hdr));
 	io_hdr.interface_id	= 'S';
 	io_hdr.cmd_len		= SG_ATA_16_LEN;

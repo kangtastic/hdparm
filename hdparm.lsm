@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	7.3
-Entered-date:	2007-04-30
+Version:	7.4
+Entered-date:	2007-06-01
 Description:	hdparm - get/set hard disk parameters for Linux IDE drives.
+		v7.4 added CFA advanced timing info
 		v7.3 fixed version number; much better SAT compliance
 		v7.2 fixed breakage when used with old IDE driver
 		v7.1 big-endian fixes for -I, --Istdin, --Istdout
@@ -59,7 +60,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		61K hdparm-7.3.tar.gz
+		62K hdparm-7.4.tar.gz
 		1K hdparm.lsm
 Platforms:	Linux, kernels 2.2 through 2.6
 Copying-policy:	BSD License

@@ -24,7 +24,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v7.3"
+#define VERSION "v7.4"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -100,7 +100,7 @@ static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
 static int	get_doreset = 0, set_doreset = 0;
 static int	get_tristate = 0, set_tristate = 0, tristate = 0;
 
-static int open_flags = O_RDONLY|O_NONBLOCK;
+static int open_flags = O_RDWR|O_NONBLOCK;
 
 // Historically, if there was no HDIO_OBSOLETE_IDENTITY, then
 // then the HDIO_GET_IDENTITY only returned 142 bytes.
@@ -266,12 +266,17 @@ static void dump_identity (__u16 *idw)
 	printf("\n");
 }
 
+#ifndef ENOIOCTLCMD
+#define ENOIOCTLCMD ENOTTY
+#endif
+
 void flush_buffer_cache (int fd)
 {
 	fsync (fd);				/* flush buffers */
 	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
 		perror("BLKFLSBUF failed");
-	if (do_drive_cmd(fd, NULL) && errno != EINVAL)	/* await completion */
+	/* await completion */
+	if (do_drive_cmd(fd, NULL) && errno != EINVAL && errno != ENOTTY && errno != ENOIOCTLCMD)
 		perror("HDIO_DRIVE_CMD(null) (wait for flush complete) failed");
 }
 
@@ -1555,27 +1560,22 @@ handle_standalone_longarg (char *name)
 	} else if (0 == strcasecmp(name, "security-freeze")) {
 		set_freeze = 1;
 	} else if (0 == strcasecmp(name, "security-unlock")) {
-		open_flags |= O_RDWR;
 		set_security = 1;
 		security_command = ATA_OP_SECURITY_UNLOCK;
 		get_security_password(0);
 	} else if (0 == strcasecmp(name, "security-set-pass")) {
-		open_flags |= O_RDWR;
 		set_security = 1;
 		security_command = ATA_OP_SECURITY_SET_PASS;
 		get_security_password(1);
 	} else if (0 == strcasecmp(name, "security-disable")) {
-		open_flags |= O_RDWR;
 		set_security = 1;
 		security_command = ATA_OP_SECURITY_DISABLE;
 		get_security_password(1);
 	} else if (0 == strcasecmp(name, "security-erase")) {
-		open_flags |= O_RDWR;
 		set_security = 1;
 		security_command = ATA_OP_SECURITY_ERASE_UNIT;
 		get_security_password(1);
 	} else if (0 == strcasecmp(name, "security-erase-enhanced")) {
-		open_flags |= O_RDWR;
 		set_security = 1;
 		enhanced_erase = 1;
 		security_command = ATA_OP_SECURITY_ERASE_UNIT;
