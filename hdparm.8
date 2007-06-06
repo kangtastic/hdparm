@@ -1,4 +1,4 @@
-.TH HDPARM 8 "June 2007" "Version 7.4"
+.TH HDPARM 8 "June 2007" "Version 7.5"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -311,21 +311,28 @@ the few drives that currently support it.
 Get/set read-only flag for the device.  When set, Linux disallows write operations on the device.
 .TP
 .I -R
-Register an IDE interface.
-.B Dangerous.
+Register an IDE interface
+.B (DANGEROUS).
 See the
 .B -U
 option for more information.
 .TP
 .I -s
 Enable/disable the power-on in standby feature, if supported by
-the drive. If enabled, the drive is powered-up in the
+the drive.
+.B VERY DANGEROUS.
+Do not use unless you are absolutely certain
+that both the system BIOS (or firmware) and the operating system kernel
+(Linux >= 2.6.22) support probing for drives that use this feature.
+When enabled, the drive is powered-up in the
 .B standby
-mode to allow the controller to sequence the spin-up of devices.
+mode to allow the controller to sequence the spin-up of devices,
+reducing the instantaneous current draw burden when many drives
+share a power supply.  Primarily for use in large RAID setups.
 This feature is usually disabled and the drive is powered-up in the
 .B active
 mode (see -C above).
-Note that a drive may also allow to enable this feature by a jumper.
+Note that a drive may also allow enabling this feature by a jumper.
 Some SATA drives support the control of this feature by pin 11 of
 the SATA power connector. In these cases, this command may be
 unsupported or may have no effect.
@@ -408,8 +415,8 @@ feature of these interfaces (usually a BIOS/CMOS setting)
 provides a safe fix for the problem for use with earlier kernels.
 .TP
 .I -U
-Un-register an IDE interface.
-.B Dangerous.
+Un-register an IDE interface
+.B (DANGEROUS).
 The companion for the
 .B -R
 option.
@@ -429,7 +436,9 @@ This is also the default behaviour when no flags are specified.
 Display extra diagnostics from some commands.
 .TP
 .I -w
-Perform a device reset (DANGEROUS).  Do NOT use this option.
+Perform a device reset
+.B (DANGEROUS).
+Do NOT use this option.
 It exists for unlikely situations where a reboot might otherwise be
 required to get a confused drive back into a useable state.
 .TP
@@ -437,7 +446,8 @@ required to get a confused drive back into a useable state.
 Get/set the IDE/SATA drive\'s write-caching feature.
 .TP
 .I -x 
-Tristate device for hotswap (DANGEROUS).
+Tristate device for hotswap
+.B (DANGEROUS).
 .TP
 .I -X 
 Set the IDE transfer mode for newer (E)IDE/ATA drives.
@@ -509,8 +519,9 @@ Also reports if the temperature is within operating condition range
 .TP
 .SH ATA Security Feature Set
 .PP
-These switches are DANGEROUS to experiment with, and might not work with every
-kernel.
+These switches are
+.B DANGEROUS
+to experiment with, and might not work with every kernel.
 .B USE AT YOUR OWN RISK.
 .TP
 .I --security-help             
@@ -529,7 +540,8 @@ The applicable drive password is selected with the --user-master switch.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-set-pass PWD 
-Lock the drive, using password PWD (Set Password) (DANGEROUS).
+Lock the drive, using password PWD (Set Password)
+.B (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 The applicable drive password is selected with the --user-master switch and the
 applicable security mode with the --security-mode switch.
@@ -542,13 +554,15 @@ The applicable drive password is selected with the --user-master switch.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-erase PWD
-Erase (locked) drive, using password PWD (DANGEROUS).
+Erase (locked) drive, using password PWD
+.B (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 The applicable drive password is selected with the --user-master switch.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-erase-enhanced PWD
-Enhanced erase (locked) drive, using password PWD (DANGEROUS).
+Enhanced erase (locked) drive, using password PWD
+.B (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 The applicable drive password is selected with the --user-master switch.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.

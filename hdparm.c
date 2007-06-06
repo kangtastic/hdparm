@@ -24,7 +24,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v7.4"
+#define VERSION "v7.5"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -99,6 +99,7 @@ static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
 
 static int	get_doreset = 0, set_doreset = 0;
 static int	get_tristate = 0, set_tristate = 0, tristate = 0;
+static int	i_know_what_i_am_doing = 0;
 
 static int open_flags = O_RDWR|O_NONBLOCK;
 
@@ -789,6 +790,16 @@ static void *get_identify_data (int fd, void *prev)
 	return id;
 }
 
+static void confirm_i_know_what_i_am_doing (const char *opt, const char *explanation)
+{
+	if (!i_know_what_i_am_doing) {
+		fprintf(stderr, "Use of %s is VERY DANGEROUS.\n%s\n"
+		"Please supply the --yes-i-know-what-i-am-doing flag if you really want this\n"
+		"Program aborted\n", opt, explanation);
+		exit(EPERM);
+	}
+}
+
 void process_dev (char *devname)
 {
 	int fd;
@@ -963,6 +974,9 @@ void process_dev (char *devname)
 			printf(" spin-up:");
 			fflush(stdout);
 			(void) do_drive_cmd(fd, args1);
+		} else {
+			confirm_i_know_what_i_am_doing("-s1",
+				"This requires BIOS and kernel support to recognize/boot the drive.");
 		}
 		if (get_powerup_in_standby) {
 			printf(" setting power-up in standby to %d", powerup_in_standby);
@@ -1595,8 +1609,12 @@ get_longarg (void)
 	if (0 == strcasecmp(name, "verbose")) {
 		verbose = 1;
 		--num_flags_processed;	/* doesn't count as an action flag */
+	} else if (0 == strcasecmp(name, "yes-i-know-what-i-am-doing")) {
+		i_know_what_i_am_doing = 1;
+		--num_flags_processed;	/* doesn't count as an action flag */
 	} else if (0 == strcasecmp(name, "direct")) {
 		open_flags |= O_DIRECT;
+		--num_flags_processed;	/* doesn't count as an action flag */
 	} else if (0 == strcasecmp(name, "drq-hsm-error")) {
 		do_drq_hsm_error = 1;
 	} else if (0 == strcasecmp(name, "Istdout")) {
