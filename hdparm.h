@@ -15,11 +15,6 @@ extern void identify (__u16 *id_supplied);
 
 extern void usage_error(int out)    __attribute__((noreturn));
 extern int main(int argc, char **argv) __attribute__((noreturn));
-extern void flush_buffer_cache (int fd);
-extern int seek_to_zero (int fd);
-extern int read_big_block (int fd, char *buf);
-extern void time_cache (int fd);
-extern void time_device (int fd);
 extern void no_scsi (void);
 extern void no_xt (void);
 extern void process_dev (char *devname);
@@ -44,6 +39,7 @@ enum {
 	ATA_OP_DOORLOCK			= 0xde,
 	ATA_OP_DOORUNLOCK		= 0xdf,
 	ATA_OP_FLUSHCACHE		= 0xe7,
+	ATA_OP_FLUSHCACHE_EXT		= 0xea,
 	ATA_OP_IDENTIFY			= 0xec,
 	ATA_OP_PIDENTIFY		= 0xa1,
 	ATA_OP_SECURITY_DISABLE		= 0xf6,

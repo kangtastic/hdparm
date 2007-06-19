@@ -9,13 +9,13 @@
 #include <ctype.h>
 #include <endian.h>
 #include <sys/ioctl.h>
-#include <sys/shm.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/time.h>
 #include <sys/times.h>
 #include <sys/types.h>
 #include <sys/mount.h>
+#include <sys/mman.h>
 #include <linux/types.h>
 #include <linux/major.h>
 #include <asm/byteorder.h>
@@ -24,7 +24,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v7.5"
+#define VERSION "v7.6"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -50,6 +50,7 @@ char *progname;
 int verbose = 0;
 static int do_defaults = 0, do_flush = 0, do_ctimings, do_timings = 0;
 static int do_identity = 0, get_geom = 0, noisy = 1, quiet = 0;
+static int do_flush_wcache = 0;
 
 static int set_fsreadahead= 0, get_fsreadahead= 0, fsreadahead= 0;
 static int set_readonly = 0, get_readonly = 0, readonly = 0;
@@ -125,6 +126,219 @@ const char *SlowMedFast[]	= {"slow", "medium", "fast", "eide", "ata"};
 const char *BuffType[]	= {"unknown", "1Sect", "DualPort", "DualPortCache"};
 
 #define YN(b)	(((b)==0)?"no":"yes")
+
+static void on_off (unsigned int value)
+{
+	printf(value ? " (on)\n" : " (off)\n");
+}
+
+#ifndef ENOIOCTLCMD
+#define ENOIOCTLCMD ENOTTY
+#endif
+
+static void flush_buffer_cache (int fd)
+{
+	fsync (fd);				/* flush buffers */
+	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
+		perror("BLKFLSBUF failed");
+	/* await completion */
+	if (do_drive_cmd(fd, NULL) && errno != EINVAL && errno != ENOTTY && errno != ENOIOCTLCMD)
+		perror("HDIO_DRIVE_CMD(null) (wait for flush complete) failed");
+}
+
+static int seek_to_zero (int fd)
+{
+	if (lseek(fd, (off_t) 0, SEEK_SET)) {
+		perror("lseek() failed");
+		return 1;
+	}
+	return 0;
+}
+
+static int read_big_block (int fd, char *buf)
+{
+	int i, rc;
+	if ((rc = read(fd, buf, TIMING_BUF_BYTES)) != TIMING_BUF_BYTES) {
+		if (rc) {
+			if (rc == -1)
+				perror("read() failed");
+			else
+				fprintf(stderr, "read(%u) returned %u bytes\n", TIMING_BUF_BYTES, rc);
+		} else {
+			fputs ("read() hit EOF - device too small\n", stderr);
+		}
+		return 1;
+	}
+	/* access all sectors of buf to ensure the read fully completed */
+	for (i = 0; i < TIMING_BUF_BYTES; i += 512)
+		buf[i] &= 1;
+	return 0;
+}
+
+static void *prepare_timing_buf (unsigned int len)
+{
+	unsigned int i;
+	unsigned char *buf;
+
+	buf = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+	if (buf == MAP_FAILED) {
+		perror("could not allocate timing buf");
+		return NULL;
+	}
+	for (i = 0; i < len; i += 4096)
+		buf[i] = 0; /* guarantee memory is present/assigned */
+	if (-1 == mlock(buf, len)) {
+		perror("mlock() failed on timing buf");
+		munmap(buf, len);
+		return NULL;
+	}
+	mlockall(MCL_CURRENT|MCL_FUTURE); // don't care if this fails on low-memory machines
+	sync();
+
+	/* give time for I/O to settle */
+	sleep(3);
+	return buf;
+}
+
+static void time_cache (int fd)
+{
+	char *buf;
+	struct itimerval e1, e2;
+	double elapsed, elapsed2;
+	unsigned int iterations, total_MB;
+
+	buf = prepare_timing_buf(TIMING_BUF_BYTES);
+	if (!buf)
+		return;
+
+	/*
+	 * getitimer() is used rather than gettimeofday() because
+	 * it is much more consistent (on my machine, at least).
+	 */
+	setitimer(ITIMER_REAL, &(struct itimerval){{1000,0},{1000,0}}, NULL);
+	if (seek_to_zero (fd)) return;
+	if (read_big_block (fd, buf)) return;
+	printf(" Timing %scached reads:   ", (open_flags & O_DIRECT) ? "O_DIRECT " : "");
+	fflush(stdout);
+
+	/* Clear out the device request queues & give them time to complete */
+	sync();
+	sleep(1);
+
+	/* Now do the timing */
+	iterations = 0;
+	getitimer(ITIMER_REAL, &e1);
+	do {
+		++iterations;
+		if (seek_to_zero (fd) || read_big_block (fd, buf))
+			goto quit;
+		getitimer(ITIMER_REAL, &e2);
+		elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
+		 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
+	} while (elapsed < 2.0);
+	total_MB = iterations * TIMING_BUF_MB;
+
+	elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
+	 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
+
+	/* Now remove the lseek() and getitimer() overheads from the elapsed time */
+	getitimer(ITIMER_REAL, &e1);
+	do {
+		if (seek_to_zero (fd))
+			goto quit;
+		getitimer(ITIMER_REAL, &e2);
+		elapsed2 = (e1.it_value.tv_sec - e2.it_value.tv_sec)
+		 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
+	} while (--iterations);
+
+	elapsed -= elapsed2;
+
+	if (total_MB >= elapsed)  /* more than 1MB/s */
+		printf("%3u MB in %5.2f seconds = %6.2f MB/sec\n",
+			total_MB, elapsed,
+			total_MB / elapsed);
+	else
+		printf("%3u MB in %5.2f seconds = %6.2f kB/sec\n",
+			total_MB, elapsed,
+			total_MB / elapsed * 1024);
+
+	flush_buffer_cache(fd);
+	sleep(1);
+quit:
+	munlockall();
+	munmap(buf, TIMING_BUF_BYTES);
+}
+
+static int do_blkgetsize (int fd, unsigned long long *blksize64)
+{
+	int		rc;
+	unsigned int	blksize32 = 0;
+
+#ifdef BLKGETSIZE64
+	if (0 == ioctl(fd, BLKGETSIZE64, blksize64)) {	// returns bytes
+		*blksize64 /= 512;
+		return 0;
+	}
+#endif
+	rc = ioctl(fd, BLKGETSIZE, &blksize32);	// returns sectors
+	if (rc)
+		perror(" BLKGETSIZE failed");
+	*blksize64 = blksize32;
+	return rc;
+}
+
+static void time_device (int fd)
+{
+	char *buf;
+	double elapsed;
+	struct itimerval e1, e2;
+	unsigned int max_iterations = 1024, total_MB, iterations;
+
+	/*
+	 * get device size
+	 */
+	if (do_ctimings || do_timings) {
+		unsigned long long blksize;
+		do_flush = 1;
+		if (0 == do_blkgetsize(fd, &blksize))
+			max_iterations = blksize / (2 * 1024) / TIMING_BUF_MB;
+	}
+	buf = prepare_timing_buf(TIMING_BUF_BYTES);
+	if (!buf)
+		return;
+
+	printf(" Timing %s disk reads:  ", (open_flags & O_DIRECT) ? "O_DIRECT" : "buffered");
+	fflush(stdout);
+
+	/*
+	 * getitimer() is used rather than gettimeofday() because
+	 * it is much more consistent (on my machine, at least).
+	 */
+	setitimer(ITIMER_REAL, &(struct itimerval){{1000,0},{1000,0}}, NULL);
+
+	/* Now do the timings for real */
+	iterations = 0;
+	getitimer(ITIMER_REAL, &e1);
+	do {
+		++iterations;
+		if (read_big_block (fd, buf))
+			goto quit;
+		getitimer(ITIMER_REAL, &e2);
+		elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
+		 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
+	} while (elapsed < 3.0 && iterations < max_iterations);
+
+	total_MB = iterations * TIMING_BUF_MB;
+	if ((total_MB / elapsed) > 1.0)  /* more than 1MB/s */
+		printf("%3u MB in %5.2f seconds = %6.2f MB/sec\n",
+			total_MB, elapsed, total_MB / elapsed);
+	else
+		printf("%3u MB in %5.2f seconds = %6.2f kB/sec\n",
+			total_MB, elapsed, total_MB / elapsed * 1024);
+quit:
+	munlockall();
+	munmap(buf, TIMING_BUF_BYTES);
+}
 
 static void dmpstr (const char *prefix, unsigned int i, const char *s[], unsigned int maxi)
 {
@@ -265,231 +479,6 @@ static void dump_identity (__u16 *idw)
 	printf("\n");
 	printf("\n * signifies the current active mode\n");
 	printf("\n");
-}
-
-#ifndef ENOIOCTLCMD
-#define ENOIOCTLCMD ENOTTY
-#endif
-
-void flush_buffer_cache (int fd)
-{
-	fsync (fd);				/* flush buffers */
-	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
-		perror("BLKFLSBUF failed");
-	/* await completion */
-	if (do_drive_cmd(fd, NULL) && errno != EINVAL && errno != ENOTTY && errno != ENOIOCTLCMD)
-		perror("HDIO_DRIVE_CMD(null) (wait for flush complete) failed");
-}
-
-int seek_to_zero (int fd)
-{
-	if (lseek(fd, (off_t) 0, SEEK_SET)) {
-		perror("lseek() failed");
-		return 1;
-	}
-	return 0;
-}
-
-int read_big_block (int fd, char *buf)
-{
-	int i, rc;
-	if ((rc = read(fd, buf, TIMING_BUF_BYTES)) != TIMING_BUF_BYTES) {
-		if (rc) {
-			if (rc == -1)
-				perror("read() failed");
-			else
-				fprintf(stderr, "read(%u) returned %u bytes\n", TIMING_BUF_BYTES, rc);
-		} else {
-			fputs ("read() hit EOF - device too small\n", stderr);
-		}
-		return 1;
-	}
-	/* access all sectors of buf to ensure the read fully completed */
-	for (i = 0; i < TIMING_BUF_BYTES; i += 512)
-		buf[i] &= 1;
-	return 0;
-}
-
-void time_cache (int fd)
-{
-	char *buf;
-	struct itimerval e1, e2;
-	int shmid;
-	double elapsed, elapsed2;
-	unsigned int iterations, total_MB;
-
-	if ((shmid = shmget(IPC_PRIVATE, TIMING_BUF_BYTES, 0600)) == -1) {
-		perror ("could not allocate sharedmem buf");
-		return;
-	}
-	if (shmctl(shmid, SHM_LOCK, NULL) == -1) {
-		perror ("could not lock sharedmem buf");
-		(void) shmctl(shmid, IPC_RMID, NULL);
-		return;
-	}
-	if ((buf = shmat(shmid, (char *) 0, 0)) == (char *) -1) {
-		perror ("could not attach sharedmem buf");
-		(void) shmctl(shmid, IPC_RMID, NULL);
-		return;
-	}
-	if (shmctl(shmid, IPC_RMID, NULL) == -1)
-		perror ("shmctl(,IPC_RMID,) failed");
-
-	/* Clear out the device request queues & give them time to complete */
-	sync();
-	sleep(3);
-
-	/*
-	 * getitimer() is used rather than gettimeofday() because
-	 * it is much more consistent (on my machine, at least).
-	 */
-	setitimer(ITIMER_REAL, &(struct itimerval){{1000,0},{1000,0}}, NULL);
-	if (seek_to_zero (fd)) return;
-	if (read_big_block (fd, buf)) return;
-	printf(" Timing %scached reads:   ", (open_flags & O_DIRECT) ? "O_DIRECT " : "");
-	fflush(stdout);
-
-	/* Clear out the device request queues & give them time to complete */
-	sync();
-	sleep(1);
-
-	/* Now do the timing */
-	iterations = 0;
-	getitimer(ITIMER_REAL, &e1);
-	do {
-		++iterations;
-		if (seek_to_zero (fd) || read_big_block (fd, buf))
-			goto quit;
-		getitimer(ITIMER_REAL, &e2);
-		elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
-		 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
-	} while (elapsed < 2.0);
-	total_MB = iterations * TIMING_BUF_MB;
-
-	elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
-	 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
-
-	/* Now remove the lseek() and getitimer() overheads from the elapsed time */
-	getitimer(ITIMER_REAL, &e1);
-	do {
-		if (seek_to_zero (fd))
-			goto quit;
-		getitimer(ITIMER_REAL, &e2);
-		elapsed2 = (e1.it_value.tv_sec - e2.it_value.tv_sec)
-		 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
-	} while (--iterations);
-
-	elapsed -= elapsed2;
-
-	if (total_MB >= elapsed)  /* more than 1MB/s */
-		printf("%3u MB in %5.2f seconds = %6.2f MB/sec\n",
-			total_MB, elapsed,
-			total_MB / elapsed);
-	else
-		printf("%3u MB in %5.2f seconds = %6.2f kB/sec\n",
-			total_MB, elapsed,
-			total_MB / elapsed * 1024);
-
-	flush_buffer_cache(fd);
-	sleep(1);
-quit:
-	if (-1 == shmdt(buf))
-		perror ("could not detach sharedmem buf");
-}
-
-static int do_blkgetsize (int fd, unsigned long long *blksize64)
-{
-	int		rc;
-	unsigned int	blksize32 = 0;
-
-#ifdef BLKGETSIZE64
-	if (0 == ioctl(fd, BLKGETSIZE64, blksize64)) {	// returns bytes
-		*blksize64 /= 512;
-		return 0;
-	}
-#endif
-	rc = ioctl(fd, BLKGETSIZE, &blksize32);	// returns sectors
-	if (rc)
-		perror(" BLKGETSIZE failed");
-	*blksize64 = blksize32;
-	return rc;
-}
-
-void time_device (int fd)
-{
-	char *buf;
-	double elapsed;
-	struct itimerval e1, e2;
-	int shmid;
-	unsigned int max_iterations = 1024, total_MB, iterations;
-
-	/*
-	 * get device size
-	 */
-	if (do_ctimings || do_timings) {
-		unsigned long long blksize;
-		do_flush = 1;
-		if (0 == do_blkgetsize(fd, &blksize))
-			max_iterations = blksize / (2 * 1024) / TIMING_BUF_MB;
-	}
-
-	if ((shmid = shmget(IPC_PRIVATE, TIMING_BUF_BYTES, 0600)) == -1) {
-		perror ("could not allocate sharedmem buf");
-		return;
-	}
-	if (shmctl(shmid, SHM_LOCK, NULL) == -1) {
-		perror ("could not lock sharedmem buf");
-		(void) shmctl(shmid, IPC_RMID, NULL);
-		return;
-	}
-	if ((buf = shmat(shmid, (char *) 0, 0)) == (char *) -1) {
-		perror ("could not attach sharedmem buf");
-		(void) shmctl(shmid, IPC_RMID, NULL);
-		return;
-	}
-	if (shmctl(shmid, IPC_RMID, NULL) == -1)
-		perror ("shmctl(,IPC_RMID,) failed");
-
-	/* Clear out the device request queues & give them time to complete */
-	sync();
-	sleep(3);
-
-	printf(" Timing %s disk reads:  ", (open_flags & O_DIRECT) ? "O_DIRECT" : "buffered");
-	fflush(stdout);
-
-	/*
-	 * getitimer() is used rather than gettimeofday() because
-	 * it is much more consistent (on my machine, at least).
-	 */
-	setitimer(ITIMER_REAL, &(struct itimerval){{1000,0},{1000,0}}, NULL);
-
-	/* Now do the timings for real */
-	iterations = 0;
-	getitimer(ITIMER_REAL, &e1);
-	do {
-		++iterations;
-		if (read_big_block (fd, buf))
-			goto quit;
-		getitimer(ITIMER_REAL, &e2);
-		elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
-		 + ((e1.it_value.tv_usec - e2.it_value.tv_usec) / 1000000.0);
-	} while (elapsed < 3.0 && iterations < max_iterations);
-
-	total_MB = iterations * TIMING_BUF_MB;
-	if ((total_MB / elapsed) > 1.0)  /* more than 1MB/s */
-		printf("%3u MB in %5.2f seconds = %6.2f MB/sec\n",
-			total_MB, elapsed, total_MB / elapsed);
-	else
-		printf("%3u MB in %5.2f seconds = %6.2f kB/sec\n",
-			total_MB, elapsed, total_MB / elapsed * 1024);
-quit:
-	if (-1 == shmdt(buf))
-		perror ("could not detach sharedmem buf");
-}
-
-static void on_off (unsigned int value)
-{
-	printf(value ? " (on)\n" : " (off)\n");
 }
 
 static const char *busstate_str (unsigned int value)
@@ -800,6 +789,18 @@ static void confirm_i_know_what_i_am_doing (const char *opt, const char *explana
 	}
 }
 
+static void flush_wcache (int fd, __u16 **id_p)
+{
+	__u8 args[4] = {ATA_OP_FLUSHCACHE,0,0,0};
+	__u16 *id;
+
+	*id_p = id = get_identify_data(fd, *id_p);
+	if (id && (id[83] & 0xe000) == 0x6000)
+		args[0] = ATA_OP_FLUSHCACHE_EXT;
+	if (do_drive_cmd(fd, args))
+		perror (" HDIO_DRIVE_CMD(flushcache) failed");
+}
+
 void process_dev (char *devname)
 {
 	int fd;
@@ -1024,21 +1025,20 @@ void process_dev (char *devname)
 			perror(" HDIO_DRIVE_CMD:ACOUSTIC failed");
 	}
 	if (set_wcache) {
-		__u8 flushcache1[4] = {ATA_OP_FLUSHCACHE,0,0,0};
-		__u8 flushcache2[4] = {ATA_OP_FLUSHCACHE,0,0,0};
-		__u8 setcache   [4] = {ATA_OP_SETFEATURES,0,0,0};
-		setcache[2] = wcache ? 0x02 : 0x82;
 		if (get_wcache) {
 			printf(" setting drive write-caching to %d", wcache);
 			on_off(wcache);
 		}
-		if (!wcache && do_drive_cmd(fd, flushcache1))
-			perror (" HDIO_DRIVE_CMD(flushcache1) failed");
-		if (ioctl(fd, HDIO_SET_WCACHE, wcache))
+		if (!wcache)
+			flush_wcache(fd, &id);
+		if (ioctl(fd, HDIO_SET_WCACHE, wcache)) {
+			__u8 setcache[4] = {ATA_OP_SETFEATURES,0,0,0};
+			setcache[2] = wcache ? 0x02 : 0x82;
 			if (do_drive_cmd(fd, setcache))
 				perror(" HDIO_DRIVE_CMD(setcache) failed");
-		if (!wcache && do_drive_cmd(fd, flushcache2))
-			perror (" HDIO_DRIVE_CMD(flushcache2) failed");
+		}
+		if (!wcache)
+			flush_wcache(fd, &id);
 	}
 	if (set_standbynow) {
 		__u8 args1[4] = {ATA_OP_STANDBYNOW1,0,0,0};
@@ -1301,11 +1301,13 @@ void process_dev (char *devname)
 	}
 
 	if (do_ctimings)
-		time_cache (fd);
+		time_cache(fd);
+	if (do_flush_wcache)
+		flush_wcache(fd, &id);
 	if (do_timings)
-		time_device (fd);
+		time_device(fd);
 	if (do_flush)
-		flush_buffer_cache (fd);
+		flush_buffer_cache(fd);
 	if (set_reread_partn) {
 		if (get_reread_partn)
 			printf(" re-reading partition table\n");
@@ -1346,6 +1348,7 @@ static void usage_help (int rc)
 	" -D   enable/disable drive defect management\n"
 	" -E   set cd-rom drive speed\n"
 	" -f   flush buffer cache for device on exit\n"
+	" -F   flush drive write cache\n"
 	" -g   display drive geometry\n"
 	" -h   display terse usage information\n"
 	" -H   read temperature from drive (Hitachi only)\n"
@@ -1571,8 +1574,6 @@ handle_standalone_longarg (char *name)
 	if (0 == strcasecmp(name, "security-help")) {
 		security_help(0);
 		exit(0);
-	} else if (0 == strcasecmp(name, "security-freeze")) {
-		set_freeze = 1;
 	} else if (0 == strcasecmp(name, "security-unlock")) {
 		set_security = 1;
 		security_command = ATA_OP_SECURITY_UNLOCK;
@@ -1643,6 +1644,8 @@ get_longarg (void)
 			while (*argp) ++argp;
 		}
 		--num_flags_processed;	/* doesn't count as an action flag */
+	} else if (0 == strcasecmp(name, "security-freeze")) {
+		set_freeze = 1;
 	} else {
 		handle_standalone_longarg(name);
 		return 1; /* 1 == no more flags allowed */
@@ -1696,6 +1699,7 @@ int main (int _argc, char **_argv)
 				case     SET_PARM('D',"defects-management",defects,0,1);
 				case     SET_PARM('E',"CDROM/DVD-speed",cdromspeed,0,255);
 				case      DO_FLAG('f',do_flush);
+				case      DO_FLAG('F',do_flush_wcache);
 				case      DO_FLAG('g',get_geom);
 				case              'h': usage_help(0); break;
 				case     SET_FLAG('H',hitachi_temp);

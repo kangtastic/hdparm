@@ -1,4 +1,4 @@
-.TH HDPARM 8 "June 2007" "Version 7.5"
+.TH HDPARM 8 "June 2007" "Version 7.6"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -133,6 +133,9 @@ This operation is also performed as part of the
 and
 .I -T
 timings.
+.TP
+.I -F
+Flush the on-drive write cache buffer (older drives may not implement this).
 .TP
 .I -g
 Display the drive geometry (cylinders, heads, sectors),

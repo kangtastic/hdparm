@@ -1,3 +1,8 @@
+hdparm-7.6
+	- added -F flag to flush on-drive write cache buffer
+	- replaced use of shm* functions with of mmap()/mlock()
+	- removed gcc -Wextra flag --> unsupported on Debian Sarge
+	- re-allow use of --security-freeze in combination with other flags
 hdparm-7.5
 	- beef up warnings for -s1 flag, as people seem to be ignoring them
 hdparm-7.4
