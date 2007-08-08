@@ -24,7 +24,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v7.6"
+#define VERSION "v7.7"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -809,10 +809,18 @@ void process_dev (char *devname)
 
 	fd = open (devname, open_flags);
 	if (fd < 0) {
-		int err = errno;
+		int err;
+		if (errno == EROFS) {
+			open_flags &= ~O_WRONLY;
+			fd = open (devname, open_flags);
+			if (fd >= 0)
+				goto open_ok;
+		}
+		err = errno;
 		perror(devname);
 		exit(err);
 	}
+open_ok:
 	if (!quiet)
 		printf("\n%s:\n", devname);
 
@@ -1103,6 +1111,7 @@ void process_dev (char *devname)
 			fprintf(stderr, "ata status=0x%02x ata error=0x%02x\n", args[0], args[1]);
 		}
 	}
+	id = (void *)-1; /* force re-IDENTIFY in case something above modified settings */
 	if (get_hitachi_temp) {
 		__u8 args[4] = {0xf0,0,0x01,0}; /* "Sense Condition", vendor-specific */
 		if (do_drive_cmd(fd, args))

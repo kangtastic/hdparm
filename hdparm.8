@@ -1,4 +1,4 @@
-.TH HDPARM 8 "June 2007" "Version 7.6"
+.TH HDPARM 8 "August 2007" "Version 7.7"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -365,13 +365,6 @@ least a couple of megabytes of free memory.  This displays the speed
 of reading directly from the Linux buffer cache without disk access.
 This measurement is essentially an indication of the throughput of the
 processor, cache, and memory of the system under test.
-If the
-.I -t
-flag is also specified, then a correction factor based on the outcome of
-.I -T
-will be incorporated into the result reported for the
-.I -t
-operation.
 .TP
 .I -t
 Perform timings of device reads for benchmark and comparison purposes.
@@ -385,13 +378,6 @@ ensure accurate measurements, the buffer cache is flushed during the
 processing of
 .I -t
 using the BLKFLSBUF ioctl.
-If the
-.I -T
-flag is also specified, then a correction factor based on the outcome of
-.I -T
-will be incorporated into the result reported for the
-.I -t
-operation.
 .TP
 .I -u
 Get/set interrupt-unmask flag for the drive.  A setting of

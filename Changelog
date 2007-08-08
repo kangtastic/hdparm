@@ -1,3 +1,7 @@
+hdparm-7.7
+	- fixed bug whereby old data was shown after settings changed (eg. with -W0)
+	- removed old notes about a "correction factor" from man page -tT descriptions
+	- retry open with O_RDONLY if O_RDWR fails with errno==EROFS
 hdparm-7.6
 	- added -F flag to flush on-drive write cache buffer
 	- replaced use of shm* functions with of mmap()/mlock()
