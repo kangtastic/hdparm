@@ -121,7 +121,8 @@
 #define MEDIA_REMOVABLE		0x0080
 #define DRIVE_NOT_REMOVABLE	0x0040  /* bit obsoleted in ATA 6 */
 #define INCOMPLETE		0x0004
-#define CFA_SUPPORT_VAL		0x848a	/* 848a=CFA feature set support */
+#define CFA_SUPPORT_VAL1	0x848a	/* 848a=CFA feature set support */
+#define CFA_SUPPORT_VAL2	0x844a	/* 844a=also means CFA feature set support */
 #define DRQ_RESPONSE_TIME	0x0060
 #define DRQ_3MS_VAL		0x0000
 #define DRQ_INTR_VAL		0x0020
@@ -396,10 +397,10 @@ static const char *feat_3_str[16] = {
 	"unknown 119[8]",				/* word 119 bit  8 */
 	"unknown 119[7]",				/* word 119 bit  7 */
 	"unknown 119[6]",				/* word 119 bit  6 */
-	"unknown 119[5]",				/* word 119 bit  5 */
+	"Free-fall Control feature set",		/* word 119 bit  5 */
 	"Segmented DOWNLOAD_MICROCODE",			/* word 119 bit  4 */
 	"{READ,WRITE}_DMA_EXT_GPL commands",		/* word 119 bit  3 */
-	"WRITE_UNCORRECTABLE command",			/* word 119 bit  2 */
+	"WRITE_UNCORRECTABLE_EXT command",		/* word 119 bit  2 */
 	"Write-Read-Verify feature set",		/* word 119 bit  1 */
 	"Disable Data Transfer After Error Detection"	/* word 119 bit  0 (ref: 2014DT)*/
 };
@@ -483,10 +484,10 @@ const char *secu_str[] = {
 
 /* word 206: SMART command transport (SCT) */
 static const char *feat_sct_str[16] = {
-	"unknown 206[15]",				/* word 206 bit 15 */
-	"unknown 206[14]",				/* word 206 bit 14 */
-	"unknown 206[13]",				/* word 206 bit 13 */
-	"unknown 206[12]",				/* word 206 bit 12 */
+	"unknown 206[15] (vendor specific)",		/* word 206 bit 15 */
+	"unknown 206[14] (vendor specific)",		/* word 206 bit 14 */
+	"unknown 206[13] (vendor specific)",		/* word 206 bit 13 */
+	"unknown 206[12] (vendor specific)",		/* word 206 bit 12 */
 	"unknown 206[11]",				/* word 206 bit 11 */
 	"unknown 206[10]",				/* word 206 bit 10 */
 	"unknown 206[9]",				/* word 206 bit  9 */
@@ -616,11 +617,11 @@ void identify (__u16 *id_supplied)
 	if(!(val[GEN_CONFIG] & NOT_ATA)) {
 		dev = ATA_DEV;
 		printf("ATA device, with ");
-	} else if(val[GEN_CONFIG]==CFA_SUPPORT_VAL) {
+	} else if(val[GEN_CONFIG]==CFA_SUPPORT_VAL1 || val[GEN_CONFIG]==CFA_SUPPORT_VAL2) {
 		is_cfa = 1;
 		dev = ATA_DEV;
 		like_std = 4;
-		printf("CompactFlash ATA device, with ");
+		printf("CompactFlash ATA device\n");
 	} else if(!(val[GEN_CONFIG] & NOT_ATAPI)) {
 		dev = ATAPI_DEV;
 		eqpt = (val[GEN_CONFIG] & EQPT_TYPE) >> SHIFT_EQPT;
@@ -630,10 +631,11 @@ void identify (__u16 *id_supplied)
 		printf("Unknown device type:\n\tbits 15&14 of general configuration word 0 both set to 1.\n");
 		exit(EINVAL);
 	}
-	if(!(val[GEN_CONFIG] & MEDIA_REMOVABLE))
-		printf("non-");
-	printf("removable media\n");
-
+	if (!is_cfa) {
+		if(!(val[GEN_CONFIG] & MEDIA_REMOVABLE))
+			printf("non-");
+		printf("removable media\n");
+	}
 
 	/* Info from the specific configuration word says whether or not the
 	 * ID command completed correctly.  It is only defined, however in
@@ -935,17 +937,11 @@ void identify (__u16 *id_supplied)
 			else	printf("?\n");
 		}
 		if((like_std > 3) && (val[CMDS_SUPP_1] & 0x0008)) {
-			/* We print out elsewhere whether the APM feature is enabled or
-			   not.  If it's not enabled, let's not repeat the info; just print
-			   nothing here. */
 			printf("\tAdvanced power management level: ");
-			if ( (val[ADV_PWR] & 0xFF00) == 0x4000 ) {
-				__u8 apm_level = val[ADV_PWR] & 0x00FF;
-
-				printf("%u (0x%x)\n", apm_level, apm_level);
-			} else {
-				printf("unknown setting (0x%04x)\n", val[ADV_PWR]);
-			}
+			if (val[CMDS_EN_1] & 0x0008)
+				printf("%u\n", val[ADV_PWR] & 0xff);
+			else
+				printf("disabled\n");
 		}
 		if(like_std > 5) {
 			if(val[ACOUSTIC]) {

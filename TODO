@@ -1,22 +1,16 @@
 Mark's TO-DO list for hdparm:
 ============================
 
-- implement the QDMA functions using /sys/
+- Implement the QDMA functions using /sys/
 
-- more ATA8 updates for IDENTIFY data
+- More ATA8 updates for IDENTIFY data
 
 - Add "wipe-drive" functionality via SCT WRITE_SAME (or manual).
 
-- Add "make_bad_sector" functionality via RW_LONG and SCT RW_LONG.
-
-- Add "heal_bad_sector" functionality via SG WRITE.
-
 - Add "surface-scan" functionality via SG READ_VERIFY.
+
+- Add --automatically-find-and-fix-media-errors
 
 - Add utility to recover data from a drive with bad sectors.
 
 - Use SCSI Inquiry for -I on ATAPI, especially with libata.
-
-- Use FLUSH_CACHE_EXT by default; fall back to FLUSH_CACHE if rejected
-
-- Add separate flag for "flush cache" by itself

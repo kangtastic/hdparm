@@ -21,10 +21,11 @@
 #include <asm/byteorder.h>
 
 #include "hdparm.h"
+#include "sgio.h"
 
 extern const char *minor_str[];
 
-#define VERSION "v7.7"
+#define VERSION "v8.0"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -87,7 +88,7 @@ static char security_password[33];
 static int get_powermode  = 0, set_powermode = 0;
 static int set_apmmode = 0, get_apmmode= 0, apmmode = 0;
 static int get_cdromspeed = 0, set_cdromspeed = 0, cdromspeed = 0;
-static int do_IDentity = 0, do_drq_hsm_error = 0;
+static int do_IDentity = 0, drq_hsm_error = 0;
 static int get_unregister = 0, set_unregister = 0, unregister = 0;
 static int	hwif = 0;
 static int	scan_hwif = 0;
@@ -97,6 +98,18 @@ static int	hwif_irq = 0;
 static int	set_busstate = 0, get_busstate = 0, busstate = 0;
 static int	set_reread_partn = 0, get_reread_partn;
 static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
+
+static int   make_bad_sector = 0, make_bad_sector_flagged;
+static __u64 make_bad_sector_addr = ~0ULL;
+
+static int   write_sector = 0;
+static __u64 write_sector_addr = ~0ULL;
+
+static int   read_sector = 0;
+static __u64 read_sector_addr = ~0ULL;
+
+static int   set_max_sectors = 0, set_max_permanent, get_native_max_sectors = 0;
+static __u64 set_max_sectors_value = 0;
 
 static int	get_doreset = 0, set_doreset = 0;
 static int	get_tristate = 0, set_tristate = 0, tristate = 0;
@@ -178,7 +191,7 @@ static int read_big_block (int fd, char *buf)
 static void *prepare_timing_buf (unsigned int len)
 {
 	unsigned int i;
-	unsigned char *buf;
+	__u8 *buf;
 
 	buf = mmap(NULL, len, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
 	if (buf == MAP_FAILED) {
@@ -348,6 +361,20 @@ static void dmpstr (const char *prefix, unsigned int i, const char *s[], unsigne
 		printf("%s%s", prefix, s[i]);
 }
 
+static __u64 get_lba_capacity (__u16 *idw)
+{
+	__u64 nsects = (idw[58] << 16) | idw[57];
+
+	if (idw[49] & 0x200) {
+		nsects = (idw[61] << 16) | idw[60];
+		if ((idw[83] & 0xc000) == 0x4000 && (idw[86] & 0x0400)) {
+			nsects = (idw[103] << 16) | idw[102];
+			nsects = (nsects << 32) | ((idw[101] << 16) | idw[100]);
+		}
+	}
+	return nsects;
+}
+
 static void dump_identity (__u16 *idw)
 {
 	int i;
@@ -387,7 +414,7 @@ static void dump_identity (__u16 *idw)
 	printf(" CurCHS=%u/%u/%u, CurSects=%u", idw[54], idw[55], idw[56], idw[57] | (idw[58] << 16));
 	printf(", LBA=%s", YN(idw[49] & 0x200));
 	if (idw[49] & 0x200)
- 		printf(", LBAsects=%u", idw[60] | (idw[61] << 16));
+ 		printf(", LBAsects=%llu", get_lba_capacity(idw));
 
 	if (idw[49] & 0x100) {
 		if (idw[62] | idw[63]) {
@@ -649,7 +676,7 @@ do_set_security (int fd)
 		exit(err);
 	}
 
-	memset(r, 0, sizeof(r));
+	memset(r, 0, sizeof(struct hdio_taskfile));
 	r->cmd_req	= TASKFILE_CMD_REQ_OUT;
 	r->xfer_method	= TASKFILE_XFER_METHOD_PIO_OUT;
 	r->out_bytes	= 512;
@@ -659,7 +686,7 @@ do_set_security (int fd)
 
 	/* Not setting any out_flags causes a segfault and most
 	   of the times a kernel panic */
-	r->out_flags.lob.command = 1;
+	r->out_flags.lob.b.command = 1;
 
 	switch (security_command) {
 		case ATA_OP_SECURITY_ERASE_UNIT:
@@ -783,8 +810,8 @@ static void confirm_i_know_what_i_am_doing (const char *opt, const char *explana
 {
 	if (!i_know_what_i_am_doing) {
 		fprintf(stderr, "Use of %s is VERY DANGEROUS.\n%s\n"
-		"Please supply the --yes-i-know-what-i-am-doing flag if you really want this\n"
-		"Program aborted\n", opt, explanation);
+		"Please supply the --yes-i-know-what-i-am-doing flag if you really want this.\n"
+		"Program aborted.\n", opt, explanation);
 		exit(EPERM);
 	}
 }
@@ -799,6 +826,224 @@ static void flush_wcache (int fd, __u16 **id_p)
 		args[0] = ATA_OP_FLUSHCACHE_EXT;
 	if (do_drive_cmd(fd, args))
 		perror (" HDIO_DRIVE_CMD(flushcache) failed");
+}
+
+static void dump_sector (__u16 *w)
+{
+	unsigned int i;
+
+	for (i = 0; i < (256/8); ++i) {
+		printf("%04x %04x %04x %04x %04x %04x %04x %04x\n", w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
+		w += 8;
+	}
+}
+
+static __u64 do_get_native_max_sectors (int fd, __u16 *id)
+{
+	__u64 max = 0;
+	struct hdio_taskfile r;
+
+	memset(&r, 0, sizeof(r));
+	r.cmd_req     = TASKFILE_CMD_REQ_NODATA;
+	r.xfer_method = TASKFILE_XFER_METHOD_NONE;
+	r.out_flags.lob.b.dev     = 1;
+	r.out_flags.lob.b.command = 1;
+	r.in_flags.lob.b.command  = 1;
+	r.in_flags.lob.b.lbal     = 1;
+	r.in_flags.lob.b.lbam     = 1;
+	r.in_flags.lob.b.lbah     = 1;
+	r.lob.dev = 0x40;
+
+	if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
+		r.in_flags.hob.b.lbal  = 1;
+		r.in_flags.hob.b.lbam  = 1;
+		r.in_flags.hob.b.lbah  = 1;
+		r.lob.command = ATA_OP_READ_NATIVE_MAX_EXT;
+		if (do_taskfile_cmd(fd, &r, 10)) {
+			perror (" READ_NATIVE_MAX_ADDRESS_EXT failed");
+		} else {
+			max = (((__u64)((r.hob.lbah << 16) | (r.hob.lbam << 8) | r.hob.lbal) << 24)
+				     | ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
+		}
+	} else {
+		r.in_flags.lob.b.dev = 1;
+		r.lob.command = ATA_OP_READ_NATIVE_MAX;
+		if (do_taskfile_cmd(fd, &r, 10)) {
+			perror (" READ_NATIVE_MAX_ADDRESS failed");
+		} else {
+			max = ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
+		}
+	}
+	return max;
+}
+
+enum {RW_READ = 0, RW_WRITE = 1, LBA28_OK = 0, LBA48_FORCE = 1};
+
+static void write_long_bad_sector (int fd, __u64 lba)
+{
+	int rc;
+	struct hdio_taskfile *r;
+
+	r = malloc(sizeof(struct hdio_taskfile) + 520);
+	if (!r) {
+		perror("malloc()");
+		exit(1);
+	}
+
+	init_hdio_taskfile(r, ATA_OP_WRITE_LONG_ONCE, RW_WRITE, LBA28_OK, lba, 1, 520);
+	memset(r->data, 0xff, 520);
+
+	// Try and ensure that the system doesn't have our sector in cache:
+	(void) ioctl(fd, BLKFLSBUF, NULL);
+	sync();
+
+	printf("Corrupting sector %llu (WRITE_LONG): ", lba);
+	fflush(stdout);
+
+	rc = do_taskfile_cmd(fd, r, 12 /* seconds */);
+	printf("%s\n", rc ? "FAILED" : "succeeded");
+	free(r);
+}
+
+static void write_unc_bad_sector (int fd, __u64 lba, int flagged)
+{
+	int rc;
+	struct hdio_taskfile *r;
+
+	r = malloc(sizeof(struct hdio_taskfile));
+	if (!r) {
+		perror("malloc()");
+		exit(1);
+	}
+
+	init_hdio_taskfile(r, ATA_OP_WRITE_UNC_EXT, RW_READ, LBA48_FORCE, lba, 1, 0);
+	r->out_flags.lob.b.feat = 1;
+	r->lob.feat = flagged ? 0xaa : 0x55;
+
+	// Try and ensure that the system doesn't have our sector in cache:
+	(void) ioctl(fd, BLKFLSBUF, NULL);
+	sync();
+
+	printf("Corrupting sector %llu (WRITE_UNC_EXT as %s): ", lba, flagged ? "flagged" : "pseudo");
+	fflush(stdout);
+
+	rc = do_taskfile_cmd(fd, r, 12 /* seconds */);
+	printf("%s\n", rc ? "FAILED" : "succeeded");
+	free(r);
+}
+
+static void do_make_bad_sector (int fd, __u16 *id, __u64 lba)
+{
+	int has_write_unc = (id[ 83] & 0xc000) == 0x4000 && (id[ 86] & 0x8000) == 0x8000
+			 && (id[119] & 0xc004) == 0x4004 && (id[120] & 0xc000) == 0x4000;
+
+	if (has_write_unc || make_bad_sector_flagged || lba >> 28) {
+		if (!has_write_unc) {
+			printf("Device does not claim to implement the required WRITE_UNC_EXT command\n"
+				"This operation will probably fail (continuing regardless).\n");
+		}
+		write_unc_bad_sector(fd, lba, make_bad_sector_flagged);
+	} else {
+		write_long_bad_sector(fd, lba);
+	}
+}
+
+static void do_write_sector (int fd, __u64 lba)
+{
+	int rc;
+	__u8 ata_op;
+	struct hdio_taskfile *r;
+
+	r = malloc(sizeof(struct hdio_taskfile) + 512);
+	if (!r) {
+		perror("malloc()");
+		exit(1);
+	}
+	ata_op = (lba >> 28) ? ATA_OP_WRITE_PIO_EXT : ATA_OP_WRITE_PIO;
+	init_hdio_taskfile(r, ata_op, RW_WRITE, LBA28_OK, lba, 1, 512);
+
+	// Try and ensure that the system doesn't have our sector in cache:
+	(void) ioctl(fd, BLKFLSBUF, NULL);
+	sync();
+
+	printf("re-writing sector %llu: ", lba);
+	fflush(stdout);
+
+	rc = do_taskfile_cmd(fd, r, 12 /* seconds */);
+	printf("%s\n", rc ? "FAILED" : "succeeded");
+	free(r);
+}
+
+static void do_read_sector (int fd, __u64 lba)
+{
+	int rc;
+	__u8 ata_op;
+	struct hdio_taskfile *r;
+
+	r = malloc(sizeof(struct hdio_taskfile) + 512);
+	if (!r) {
+		perror("malloc()");
+		exit(1);
+	}
+	ata_op = (lba >> 28) ? ATA_OP_READ_PIO_EXT : ATA_OP_READ_PIO;
+	init_hdio_taskfile(r, ata_op, RW_READ, LBA28_OK, lba, 1, 512);
+
+	printf("reading sector %llu: ", lba);
+	fflush(stdout);
+
+	rc = do_taskfile_cmd(fd, r, 12 /* seconds */);
+	printf("%s\n", rc ? "FAILED" : "succeeded");
+	if (rc == 0)
+		dump_sector(r->data);
+	free(r);
+}
+
+static void do_set_max_sectors (int fd, __u16 *id, __u64 nsects, int permanent)
+{
+	struct hdio_taskfile r;
+	__u64 addr = nsects - 1;
+
+	memset(&r, 0, sizeof(r));
+	r.cmd_req     = TASKFILE_CMD_REQ_NODATA;
+	r.xfer_method = TASKFILE_XFER_METHOD_NONE;
+
+	r.out_flags.lob.b.nsect   = 1;
+	r.out_flags.lob.b.lbal    = 1;
+	r.out_flags.lob.b.lbam    = 1;
+	r.out_flags.lob.b.lbah    = 1;
+	r.out_flags.lob.b.dev     = 1;
+	r.out_flags.lob.b.command = 1;
+	r.in_flags.lob.b.command  = 1;
+	r.lob.nsect = permanent ? 1 : 0;
+	r.lob.lbal  =  addr        & 0xff;
+	r.lob.lbam  = (addr >>  8) & 0xff;
+	r.lob.lbah  = (addr >> 16) & 0xff;
+	r.lob.dev   = 0x40;
+
+	if (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
+		r.out_flags.hob.b.nsect = 1;
+		r.out_flags.hob.b.lbal  = 1;
+		r.out_flags.hob.b.lbam  = 1;
+		r.out_flags.hob.b.lbah  = 1;
+		r.hob.lbal = (addr >> 24) & 0xff;
+		r.hob.lbam = (addr >> 32) & 0xff;
+		r.hob.lbah = (addr >> 40) & 0xff;
+		r.lob.command = ATA_OP_SET_MAX_EXT;
+	} else {
+		if (addr >> 28) {
+			fprintf(stderr, "-N address is too large for drive;;aborting.\n");
+			return;
+		}
+		r.lob.dev |= (addr >> 24) & 0x0f;
+		r.lob.command  = ATA_OP_SET_MAX;
+	}
+
+	/* spec requires that we do this immediately in front.. racey */
+	(void)do_get_native_max_sectors(fd, id);
+
+	/* now set the new value */
+	if (do_taskfile_cmd(fd, &r, 10))
+		perror (" SET_MAX_ADDRESS failed");
 }
 
 void process_dev (char *devname)
@@ -1016,6 +1261,11 @@ open_ok:
 			perror(" HDIO_DRIVE_CMD failed");
 	}
 	if (set_cdromspeed) {
+		/* FIXME: the CDROM_SELECT_SPEED ioctl
+		 * actually issues GPCMD_SET_SPEED to the drive.
+		 * But many newer DVD drives want GPCMD_SET_STREAMING instead.
+		 * Perhaps we should just do an sg16 issue here of *both* opcodes?
+		 */
 		if (get_cdromspeed)
 			printf ("setting cdrom speed to %d\n", cdromspeed);
 		if (ioctl (fd, CDROM_SELECT_SPEED, cdromspeed))
@@ -1097,7 +1347,27 @@ open_ok:
 		if (ioctl(fd, HDIO_SET_BUSSTATE, busstate))
 			perror(" HDIO_SET_BUSSTATE failed");
 	}
-	if (do_drq_hsm_error) {
+	if (set_max_sectors) {
+		if (get_native_max_sectors)
+			printf(" setting max visible sectors to %llu (%s)\n", set_max_sectors_value, set_max_permanent ? "permanent" : "temporary");
+		id = get_identify_data(fd, id);
+		if (set_max_sectors_value < get_lba_capacity(id))
+			confirm_i_know_what_i_am_doing("-Nnnnnn", "You have requested reducing the apparent size of the drive.\nThis is a BAD idea, and can easily destroy all of the drive's contents.");
+		do_set_max_sectors(fd, id, set_max_sectors_value, set_max_permanent);
+	}
+	if (make_bad_sector) {
+		id = get_identify_data(fd, id);
+		confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media\nThis is a BAD idea, and can easily result in total data loss.");
+		do_make_bad_sector(fd, id, make_bad_sector_addr);
+	}
+	if (write_sector) {
+		confirm_i_know_what_i_am_doing("--write-sector", "You are trying to deliberately overwrite a low-level sector on the media\nThis is a BAD idea, and can easily result in total data loss.");
+		do_write_sector(fd, write_sector_addr);
+	}
+	if (read_sector) {
+		do_read_sector(fd, read_sector_addr);
+	}
+	if (drq_hsm_error) {
 		id = get_identify_data(fd, id);
 		if (id) {
 			__u8 args[4] = {0,0,0,0};
@@ -1107,7 +1377,7 @@ open_ok:
 			sync();
 			sleep(1);
 			do_drive_cmd(fd, args);
-			perror("do_drq_hsm_error");
+			perror("drq_hsm_error");
 			fprintf(stderr, "ata status=0x%02x ata error=0x%02x\n", args[0], args[1]);
 		}
 	}
@@ -1255,15 +1525,10 @@ open_ok:
 	if (do_IDentity) {
 		id = get_identify_data(fd, id);
 		if (id) {
-			int i;
-			if (do_IDentity == 2) {
-				for (i = 0; i < (256/8); ++i) {
-					printf("%04x %04x %04x %04x %04x %04x %04x %04x\n", id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7]);
-					id += 8;
-				}
-			} else {
+			if (do_IDentity == 2)
+				dump_sector(id);
+			else
 				identify((void *)id);
-			}
 		}
 	}
 	if (get_lookahead) {
@@ -1307,6 +1572,23 @@ open_ok:
 			perror(" HDIO_GET_BUSSTATE failed");
 		else
 			printf(" busstate      = %2ld (%s)\n", parm, busstate_str(parm));
+	}
+	if (get_native_max_sectors) {
+		__u64 visible, native;
+		id = get_identify_data(fd, id);
+		if (id) {
+			visible = get_lba_capacity(id);
+			native  = do_get_native_max_sectors(fd, id);
+			if (native) {
+				printf(" max sectors   = %llu/%llu", visible, native);
+				if (visible < native)
+					printf(", HPA is enabled\n");
+				else if (visible == native)
+					printf(", HPA is disabled\n");
+				else
+					printf(", HPA setting seems invalid\n");
+			}
+		}
 	}
 
 	if (do_ctimings)
@@ -1368,6 +1650,7 @@ static void usage_help (int rc)
 	" -L   set drive doorlock (0/1) (removable harddisks only)\n"
 	" -M   get/set acoustic management (0-254, 128: quiet, 254: fast)\n"
 	" -m   get/set multiple sector count\n"
+	" -N   get/set max visible number of sectors (HPA) (VERY DANGEROUS)\n"
 	" -n   get/set ignore-write-errors flag (0/1)\n"
 	" -p   set PIO mode on IDE interface chipset (0,1,2,3,4,...)\n"
 	" -P   set drive prefetch count\n"
@@ -1391,12 +1674,15 @@ static void usage_help (int rc)
 	" -Y   put drive to sleep\n"
 	" -Z   disable Seagate auto-powersaving mode\n"
 	" -z   re-read partition table\n"
-	" --direct         use O_DIRECT to bypass page cache for timings\n"
-	" --Istdin         read identify data from stdin as ASCII hex\n"
-	" --Istdout        write identify data to stdout as ASCII hex\n"
-	" --verbose        display extra diagnostics from some commands\n"
-	" --security-help  display help for ATA security commands\n"
-	" --drq-hsm-error  crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
+	" --direct          use O_DIRECT to bypass page cache for timings\n"
+	" --drq-hsm-error   crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
+	" --Istdin          read identify data from stdin as ASCII hex\n"
+	" --Istdout         write identify data to stdout as ASCII hex\n"
+	" --make-bad-sector deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
+	" --read-sector     read and dump (in hex) a sector directly from the media\n"
+	" --security-help   display help for ATA security commands\n"
+	" --verbose         display extra diagnostics from some commands\n"
+	" --write-sector    repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
 	"\n");
 	exit(rc);
 }
@@ -1450,7 +1736,7 @@ static void security_help (int rc)
 			flag = 1;				\
 	} while (0)
 
-static int fromhex (unsigned char c)
+static int fromhex (__u8 c)
 {
 	if (c >= '0' && c <= '9')
 		return (c - '0');
@@ -1562,6 +1848,52 @@ static void get_security_password (int handle_NULL)
 		++argp;
 }
 
+static int
+get_sector_value (int optional, const char flag_c, int *flag_p, __u64 *value_p, unsigned int min_value, const char *emsg)
+{
+	int got_value = 0, got_digit = 0;
+	const __u64 limit = (1ULL << 48) - 1;
+	__u64 value = *value_p;
+
+	if (!optional)
+		got_value = 1;	/* makes getting a value mandatory here */
+
+	if (!*argp && argc && (isdigit(**argv) || (flag_p && flag_c == **argv)))
+		argp = *argv++, --argc;
+
+	if (flag_p) {
+		*flag_p = 0;
+		if (*argp == flag_c) {
+			*flag_p = 1;
+			got_value = 1;
+			argp++;
+		}
+	}
+
+	while (isdigit(*argp)) {
+		if (!got_digit++)
+			value = 0;
+		got_value = 1;
+		value = (value * 10) + (*argp++ - '0');
+	}
+	if (got_value) {
+		if (value < min_value || value > limit) {
+			fprintf(stderr, "  %s: bad/missing sector value\n", emsg);
+			exit(EINVAL);
+		}
+		*value_p = value;
+	}
+	return got_value;
+}
+
+static void
+get_set_max_sectors_parms (void)
+{
+	get_native_max_sectors = noisy;
+	noisy = 1;
+	set_max_sectors = get_sector_value(1, 'p', &set_max_permanent, &set_max_sectors_value, 1, "-N");
+}
+
 static void
 handle_standalone_longarg (char *name)
 {
@@ -1626,7 +1958,16 @@ get_longarg (void)
 		open_flags |= O_DIRECT;
 		--num_flags_processed;	/* doesn't count as an action flag */
 	} else if (0 == strcasecmp(name, "drq-hsm-error")) {
-		do_drq_hsm_error = 1;
+		drq_hsm_error = 1;
+	} else if (0 == strcasecmp(name, "make-bad-sector")) {
+		make_bad_sector = 1;
+		get_sector_value(0, 'f', &make_bad_sector_flagged, &make_bad_sector_addr, 0, "--make-bad-sector");
+	} else if (0 == strcasecmp(name, "write-sector") || 0 == strcasecmp(name, "repair-sector")) {
+		write_sector = 1;
+		get_sector_value(0, 0, NULL, &write_sector_addr, 0, "--write-sector");
+	} else if (0 == strcasecmp(name, "read-sector")) {
+		read_sector = 1;
+		get_sector_value(0, 0, NULL, &read_sector_addr, 0, "--read-sector");
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
 	} else if (0 == strcasecmp(name, "security-mode")) {
@@ -1720,6 +2061,7 @@ int main (int _argc, char **_argv)
 				case GET_SET_PARM('m',"multmode-count",mult,0,64);
 				case GET_SET_PARM('M',"acoustic-management",acoustic,0,255);
 				case GET_SET_PARM('n',"ignore-write-errors",nowerr,0,1);
+				case              'N': get_set_max_sectors_parms(); break;
 				case     SET_PARM('P',"prefetch",prefetch,0,255);
 				case              'q': quiet = 1; noisy = 0; break;
 				case     SET_PARM('Q',"queue-depth",dma_q,0,32);

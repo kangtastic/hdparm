@@ -1,15 +1,16 @@
 The new "libata" SATA/IDE drivers in the Linux-2.6.xx kerrnels
-do not yet support use of hdparm on ATAPI devices.
+did not originally support use of hdparm on ATAPI devices.
 
-This directory includes two kernel patches that can
+This directory includes kernel patches that can
 be applied together (in sequence) to add support to
-the kernel for using hdparm with ATAPI (CD/DVD/tape) drives.
+some older kernels for using hdparm with ATAPI (CD/DVD/tape) drives.
 
 	01_libata_cmd_len_check.patch
 	02_libata_atapi_ata16.patch
 
 Both of these are required for any kernel prior to 2.6.22,
-and only the second one should be needed with later kernels.
+and only the second one may be needed with 2.6.23.
+The 2.6.24 kernel (and beyond) should not require either patch.
 
 * * * 
 

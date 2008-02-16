@@ -24,12 +24,20 @@ INSTALL_PROGRAM = $(INSTALL)
 
 OBJS = hdparm.o identify.o sgio.o
 
-all: hdparm
-
-hdparm: hdparm.h $(OBJS)
+hdparm: hdparm.h sgio.h $(OBJS)
 	$(CC) $(LDFLAGS) -o hdparm $(OBJS)
 	strip hdparm
+
+sgio.o:	sgio.h
+
+hdparm.o:	hdparm.h sgio.h
+
+identify.o:	hdparm.h
+
+all: hdparm
  
+sgio.o: sgio.c sgio.h hdparm.h
+
 install: all hdparm.8
 	if [ ! -z $(DESTDIR) ]; then $(INSTALL_DIR) $(DESTDIR) ; fi
 	if [ ! -z $(DESTDIR)$(sbindir) ]; then $(INSTALL_DIR) $(DESTDIR)$(sbindir) ; fi
@@ -43,5 +51,5 @@ install: all hdparm.8
 	elif [ -d $(DESTDIR)$(oldmandir) ]; then $(INSTALL_DATA) -D hdparm.8 $(DESTDIR)$(oldmandir)/man8/hdparm.8 ; fi
 
 clean:
-	rm -f hdparm $(OBJS) core
+	-rm -f hdparm $(OBJS) core 2>/dev/null
 

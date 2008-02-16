@@ -1,4 +1,4 @@
-.TH HDPARM 8 "August 2007" "Version 7.7"
+.TH HDPARM 8 "February 2008" "Version 8.0"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -37,7 +37,13 @@ Get/set bus state.
 .TP
 .I -B
 Set Advanced Power Management feature, if the drive supports it. A low value
-means aggressive power management and a high value means better performance. A value of 255 will disable apm on the drive.
+means aggressive power management and a high value means better performance.
+Possible settings range from values 1 through 127 (which permit spin-down),
+and values 128 through 254 (which do not permit spin-down).
+The highest degree of power management is attained with a setting of 1,
+and the highest I/O performance with a setting of 254.
+A value of 255 tells hdparm to disable Advanced Power Management altogether
+on the drive (not all drives support disabling it, but most do).
 .TP
 .I -c
 Query/enable (E)IDE 32-bit I/O support.  A numeric parameter can be
@@ -257,6 +263,31 @@ Some drives claim to support multiple mode, but lose data at some settings.
 Under rare circumstances, such failures can result in
 .B massive filesystem corruption.
 .TP
+.I --make-bad-sector
+Deliberately create a bad sector (aka. "media error") on the disk.
+EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
+This can be useful for testing of device/RAID error recovery mechanisms.
+The sector number is given as a (base10) parameter after the flag.
+Depending on the device, hdparm will choose one of two possible ATA commands for
+corrupting the sector.  The WRITE_LONG works on most drives, but only up to the 28-bit
+sector boundary.  Some very recent drives (2008) may support the new WRITE_UNCORRECTABLE_EXT
+command, which works for any LBA48 sector.  If available, hdparm will use that in
+preference to WRITE_LONG.  The WRITE_UNCORRECTABLE_EXT command itself presents a
+choice of how the new bad sector should behave.
+By default, it will look like any other bad sector, and the drive may take some
+time to retry and fail on subsequent READs of the sector.
+However, if a single letter
+.B f
+is prepended immediately in front of the first digit of the sector number parameter,
+then hdparm will issue a "flagged" WRITE_UNCORRECTABLE_EXT, which causes the drive
+to merely flag the sector as bad (rather than genuinely corrupt it), and subsequent
+READs of the sector will fail immediately (rather than after several retries).
+Note also that the
+.I --repair-sector
+flag can be used to restore (any) bad sectors when they are no longer needed,
+including sectors that were genuinely bad (the drive will likely remap those
+to a fresh area on the media).
+.TP
 .I -M
 Get/set Automatic Acoustic Management (AAM) setting. Most modern harddisk drives 
 have the ability to speed down the head movements to reduce their noise output.
@@ -266,6 +297,40 @@ levels (quiet / fast), while others may have different levels between 128 and 25
 At the moment, most drives only support 3 options, off, quiet, and fast.
 These have been assigned the values 0, 128, and 254 at present, respectively,
 but integer space has been incorporated for future expansion, should this change.
+.TP
+.I -N
+Get/set max visible number of sectors, also known as the
+.B Host Protected Area
+setting.  Without a parameter,
+.I -N
+displays the current setting, which is reported as two values: the first
+gives the current max sectors setting, and the second shows
+the native (real) hardware limit for the disk.
+The difference between these two values indicates how many sectors of the disk
+are currently hidden from the operating system, in the form of a
+.B Host Protected Area (HPA).
+This area is often used by computer makers to hold diagnostic software,
+and/or a copy of the originally provided operating system for recovery purposes.
+To change the current max (VERY DANGEROUS, DATA LOSS IS EXTREMELY LIKELY),
+a new value should be provided (in base10) immediately
+following the
+.I -N
+flag.
+This value is specified as a count of sectors, rather than
+the "max sector address" of the drive.
+Drives have the concept of a temporary (volatile) setting which is
+lost on the next hardware reset, as well as a more permanent (non-volatile)
+value which survives resets and power cycles.  By default,
+.I -N
+affects only the temporary (volatile) setting.  To change the permanent
+(non-volatile) value, prepend a leading
+.I p
+character immediately before the first digit of the value.
+Drives are supposed to allow only a single permanent
+change per session.  A hardware reset (or power cycle) is required
+before another permanent
+.I -N
+operation can succeed.
 .TP
 .I -n
 Get or set the "ignore write errors" flag in the driver.
@@ -312,6 +377,18 @@ the few drives that currently support it.
 .TP
 .I -r
 Get/set read-only flag for the device.  When set, Linux disallows write operations on the device.
+.TP
+.I --read-sector
+Reads from the specified sector number, and dumps the contents in hex to standard output.
+The sector number must be given (base10) after this flag.
+hdparm will issue a low-level read (completely bypassing the usual block layer read/write mechanisms)
+for the specified sector.  This can be used to definitively check whether a given sector is bad
+(media error) or not (doing so through the usual mechanisms can sometimes give false positives).
+.TP
+.I --repair-sector
+This is an alias for the
+.I --write-sector
+flag.  VERY DANGEROUS.
 .TP
 .I -R
 Register an IDE interface
@@ -430,6 +507,12 @@ Perform a device reset
 Do NOT use this option.
 It exists for unlikely situations where a reboot might otherwise be
 required to get a confused drive back into a useable state.
+.TP
+.I --write-sector
+Writes zeros to the specified sector number.  VERY DANGEROUS.
+The sector number must be given (base10) after this flag.
+hdparm will issue a low-level write (completely bypassing the usual block layer read/write mechanisms)
+to the specified sector.  This can be used to force a drive to repair a bad sector (media error).
 .TP
 .I -W
 Get/set the IDE/SATA drive\'s write-caching feature.
@@ -612,11 +695,10 @@ with suggestions from many netfolk.
 The disable Seagate auto-powersaving code
 is courtesy of Tomi Leppikangas(tomilepp@paju.oulu.fi).
 .PP
-Security freeze command by Benjamin Benz <bbe@heise.de>, 2005.
+Security freeze command by Benjamin Benz, 2005.
 .PP
-PIO data out security commands by Leonard den Ottolander
-<leonard den ottolander nl>, 2005.
-Parts by Benjamin Benz <bbe@heise.de> and others.
+PIO data out security commands by Leonard den Ottolander , 2005.
+Some other parts by Benjamin Benz and others.
 .SH SEE ALSO
 .B http://www.t13.org/
 Technical Committee T13 AT Attachment (ATA/ATAPI) Interface.

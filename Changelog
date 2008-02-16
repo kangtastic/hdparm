@@ -1,3 +1,14 @@
+hdparm-8.0
+	- added --make-bad-sector to deliberately create a media error
+	- added --write-sector (aka. --repair-sector) to repair a media error
+	- added --read-sector to test for a media error
+	- Makefile dependency tweaks
+	- added -N (get/set max address/HPA) flag, courtesy of Jakub Bogusz
+	- fixed LBAsects output from -i to use LBA48 values when available
+	- fixed alternate opcode for SLEEPNOW
+	- lots of changes/fixes to sgio.c to support more commands
+	- add detection of buggy Sandisk 16MB CF card
+	- fixed tf_to_lba() bug, courtesy of Jakub Bogusz
 hdparm-7.7
 	- fixed bug whereby old data was shown after settings changed (eg. with -W0)
 	- removed old notes about a "correction factor" from man page -tT descriptions
