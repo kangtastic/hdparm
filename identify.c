@@ -445,6 +445,7 @@ static const char *feat_sata0_str[16] = {
 /* use cmd_feat_str[] to display what commands and features have
  * been enabled with words 85-87 
  */
+#define WWN_SUP         0x100 /* 1=support; 0=not supported */
 
 /* words 89, 90, SECU ERASE TIME */
 #define ERASE_BITS		0x00ff
@@ -683,16 +684,31 @@ void identify (__u16 *id_supplied)
 	printf("Standards:");
 	if(eqpt != CDROM) {
 		//printf("major=%04x minor=%04x\n", val[MAJOR], val[MINOR]);
+		const char * used = 0;
 		if(val[MINOR] && (val[MINOR] <= MINOR_MAX)) {
 			if(like_std < 3)
 				like_std = 3;
 			std = actual_ver[val[MINOR]];
 			if (std)
-				printf("\n\tUsed: %s ",minor_str[val[MINOR]]);
-		} else if (val[MINOR] == 0x107) {
-			std = 8;
-			printf("\n\tUsed: %s ", "ATA8-ACS revision 2d");
+				used = minor_str[val[MINOR]];
+		} else {
+			/* check for recent ATA-8 revision codes (not added to
+			 * actual_ver/minor_str to avoid large sparse tables) */
+			switch (val[MINOR]) {
+			  case 0x0027: used = "ATA-8-ACS revision 3c"; break;
+			  case 0x0033: used = "ATA-8-ACS revision 3e"; break;
+			  case 0x0042: used = "ATA-8-ACS revision 3f"; break;
+			  case 0x0052: used = "ATA-8-ACS revision 3b"; break;
+			  case 0x0107: used = "ATA-8-ACS revision 2d"; break;
+			}
+			if (used)
+				std = 8;
 		}
+		if (used)
+			printf("\n\tUsed: %s ", used);
+		else if (val[MINOR] >= 0x001f) /* first "reserved" value possibly later used by ATA-8 */
+			printf("\n\tUsed: unknown (minor revision code 0x%04x) ", val[MINOR]);
+
 		/* looks like when they up-issue the std, they obsolete one;
 		 * thus, only the newest 4 issues need be supported.
 		 * (That's what "kk" and "min_std" are all about) */
@@ -720,7 +736,10 @@ void identify (__u16 *id_supplied)
 		 * the words from the next level up.  It happens.
 		 */
 		if(like_std < std) like_std = std;
-		if(((std == 5) || (!std && (like_std < 6))) &&
+		if(((std == 7) || (!std && (like_std < 8))) &&
+		   (val[SCT_SUPP] & 0x1)) {
+			like_std = 8;
+		} else if(((std == 5) || (!std && (like_std < 6))) &&
 		   ( (((val[CMDS_SUPP_1] & VALID) == VALID_VAL) &&
 		     ((val[CMDS_SUPP_1] & CMDS_W83) > 0x00ff)) ||
 		    (((val[CMDS_SUPP_2] & VALID) == VALID_VAL) &&
@@ -1083,6 +1102,13 @@ void identify (__u16 *id_supplied)
 			printf("\n");
 		}
 	}
+	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_EN_2] & WWN_SUP)) 
+    {
+		printf("Logical Unit WWN Device Identifier: %x%x%x%x\n", val[108], val[109], val[110], val[111]);
+		printf("\tNAA\t\t: %x\n", (val[108] & 0xf000) >> 12);
+		printf("\tIEEE OUI\t: %x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));
+		printf("\tUnique ID\t: %x%x\n", (val[109] & 0x000f), ((val[110] << 16) | val[111]));
+    }
 
 	/* reset result */
 	if((val[HWRST_RSLT] & VALID) == VALID_VAL) {

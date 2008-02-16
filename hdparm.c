@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v8.0"
+#define VERSION "v8.1"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -90,7 +90,6 @@ static int set_apmmode = 0, get_apmmode= 0, apmmode = 0;
 static int get_cdromspeed = 0, set_cdromspeed = 0, cdromspeed = 0;
 static int do_IDentity = 0, drq_hsm_error = 0;
 static int get_unregister = 0, set_unregister = 0, unregister = 0;
-static int	hwif = 0;
 static int	scan_hwif = 0;
 static int	hwif_data = 0;
 static int	hwif_ctrl = 0;
@@ -1077,8 +1076,8 @@ open_ok:
 	}
 	if (set_unregister) {
 		if (get_unregister)
-			printf(" attempting to unregister hwif#%u\n", hwif);
-		if (ioctl(fd, HDIO_UNREGISTER_HWIF, hwif))
+			printf(" attempting to unregister hwif#%u\n", set_unregister);
+		if (ioctl(fd, HDIO_UNREGISTER_HWIF, set_unregister))
 			perror(" HDIO_UNREGISTER_HWIF failed");
 	}
 	if (scan_hwif) {

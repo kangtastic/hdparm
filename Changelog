@@ -1,3 +1,7 @@
+hdparm-8.1
+	- fixed -U parameter bug
+	- added ATA8 minor revision info to -I, courtesy of chrfranke
+	- added WorldWideNumber to -I, courtesy of Raksac
 hdparm-8.0
 	- added --make-bad-sector to deliberately create a media error
 	- added --write-sector (aka. --repair-sector) to repair a media error
