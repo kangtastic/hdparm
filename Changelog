@@ -1,3 +1,6 @@
+hdparm-8.3
+	- fixed -i display for udma6
+	- try and exit with errno on fail paths, from Ladislav Michnovic
 hdparm-8.2
 	- clear feat register for safety with SET_MAX_ADDRESS command
 	- add note to manpage regarding possible -N transient failures
