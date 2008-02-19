@@ -91,6 +91,15 @@ enum {
 };
 
 /*
+ * Useful parameters for init_hdio_taskfile():
+ */
+enum {	RW_READ			= 0,
+	RW_WRITE		= 1,
+	LBA28_OK		= 0,
+	LBA48_FORCE		= 1,
+};
+
+/*
  * Definitions and structures for use with SG_IO + ATA_16:
  */
 struct ata_lba_regs {
@@ -121,16 +130,17 @@ enum {
 	TASKFILE_CMD_REQ_NODATA	= 0,	/* ide: IDE_DRIVE_TASK_NO_DATA */
 	TASKFILE_CMD_REQ_IN	= 2,	/* ide: IDE_DRIVE_TASK_IN */
 	TASKFILE_CMD_REQ_OUT	= 3,	/* ide: IDE_DRIVE_TASK_OUT */
+	TASKFILE_CMD_REQ_RAW_OUT= 4,	/* ide: IDE_DRIVE_TASK_RAW_WRITE */
 	/*
 	 * These specify the method of transfer (pio, dma, multi, ..)
 	 */
-	TASKFILE_XFER_METHOD_NONE	= 0,	/* ide: TASKFILE_IN */
-	TASKFILE_XFER_METHOD_PIO_IN	= 1,	/* ide: TASKFILE_IN */
-	TASKFILE_XFER_METHOD_PIO_OUT	= 4,	/* ide: TASKFILE_OUT */
+	TASKFILE_DPHASE_NONE	= 0,	/* ide: TASKFILE_IN */
+	TASKFILE_DPHASE_PIO_IN	= 1,	/* ide: TASKFILE_IN */
+	TASKFILE_DPHASE_PIO_OUT	= 4,	/* ide: TASKFILE_OUT */
 };
 
 union reg_flags {
-	unsigned all			: 8;
+	unsigned all			:16;
 	struct {
 		unsigned data		: 1;
 		unsigned feat		: 1;
@@ -140,12 +150,16 @@ union reg_flags {
 		unsigned lbah		: 1;
 		unsigned dev		: 1;
 		unsigned command	: 1;
-	} b;
-};
 
-struct taskfile_flags {
-	union reg_flags		lob;
-	union reg_flags		hob;
+		unsigned hob_data	: 1;
+		unsigned hob_feat	: 1;
+		unsigned hob_lbal	: 1;
+		unsigned hob_nsect	: 1;
+		unsigned hob_lbam	: 1;
+		unsigned hob_lbah	: 1;
+		unsigned hob_dev	: 1;
+		unsigned hob_command	: 1;
+	} b;
 };
 
 struct taskfile_regs {
@@ -162,12 +176,12 @@ struct taskfile_regs {
 struct hdio_taskfile {
 	struct taskfile_regs	lob;
 	struct taskfile_regs	hob;
-	struct taskfile_flags	out_flags;
-	struct taskfile_flags	in_flags;
-	int			xfer_method;
-	int			cmd_req;
-	unsigned long		out_bytes;
-	unsigned long		in_bytes;
+	union reg_flags		oflags;
+	union reg_flags		iflags;
+	int			dphase;
+	int			cmd_req;     /* IDE command_type */
+	unsigned long		obytes;
+	unsigned long		ibytes;
 	__u16			data[0];
 };
 

@@ -1,9 +1,11 @@
 Mark's TO-DO list for hdparm:
 ============================
 
+- Make parameter parsing/etc.. LBA48 safe everywhere (instead of merely u32).
+
 - Implement the QDMA functions using /sys/
 
-- More ATA8 updates for IDENTIFY data
+- More ATA8 updates for IDENTIFY data.
 
 - Add "wipe-drive" functionality via SCT WRITE_SAME (or manual).
 

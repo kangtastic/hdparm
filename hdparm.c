@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v8.1"
+#define VERSION "v8.2"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -108,7 +108,7 @@ static int   read_sector = 0;
 static __u64 read_sector_addr = ~0ULL;
 
 static int   set_max_sectors = 0, set_max_permanent, get_native_max_sectors = 0;
-static __u64 set_max_sectors_value = 0;
+static __u64 set_max_addr = 0;
 
 static int	get_doreset = 0, set_doreset = 0;
 static int	get_tristate = 0, set_tristate = 0, tristate = 0;
@@ -150,12 +150,17 @@ static void on_off (unsigned int value)
 
 static void flush_buffer_cache (int fd)
 {
-	fsync (fd);				/* flush buffers */
+	sync();
+	fsync(fd);				/* flush buffers */
+	fdatasync(fd);				/* flush buffers */
+	sync();
 	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
 		perror("BLKFLSBUF failed");
+	sync();
 	/* await completion */
 	if (do_drive_cmd(fd, NULL) && errno != EINVAL && errno != ENOTTY && errno != ENOIOCTLCMD)
 		perror("HDIO_DRIVE_CMD(null) (wait for flush complete) failed");
+	sync();
 }
 
 static int seek_to_zero (int fd)
@@ -234,7 +239,7 @@ static void time_cache (int fd)
 	fflush(stdout);
 
 	/* Clear out the device request queues & give them time to complete */
-	sync();
+	flush_buffer_cache(fd);
 	sleep(1);
 
 	/* Now do the timing */
@@ -677,15 +682,16 @@ do_set_security (int fd)
 
 	memset(r, 0, sizeof(struct hdio_taskfile));
 	r->cmd_req	= TASKFILE_CMD_REQ_OUT;
-	r->xfer_method	= TASKFILE_XFER_METHOD_PIO_OUT;
-	r->out_bytes	= 512;
+	r->dphase	= TASKFILE_DPHASE_PIO_OUT;
+	r->obytes	= 512;
 	r->lob.command	= security_command;
 	r->data[0]	= security_master & 0x01;
 	memcpy(&r->data[2], security_password, 32);
 
-	/* Not setting any out_flags causes a segfault and most
+	/* Not setting any oflags causes a segfault and most
 	   of the times a kernel panic */
-	r->out_flags.lob.b.command = 1;
+	r->oflags.b.command = 1;
+	r->oflags.b.feat    = 1;
 
 	switch (security_command) {
 		case ATA_OP_SECURITY_ERASE_UNIT:
@@ -843,20 +849,20 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	struct hdio_taskfile r;
 
 	memset(&r, 0, sizeof(r));
-	r.cmd_req     = TASKFILE_CMD_REQ_NODATA;
-	r.xfer_method = TASKFILE_XFER_METHOD_NONE;
-	r.out_flags.lob.b.dev     = 1;
-	r.out_flags.lob.b.command = 1;
-	r.in_flags.lob.b.command  = 1;
-	r.in_flags.lob.b.lbal     = 1;
-	r.in_flags.lob.b.lbam     = 1;
-	r.in_flags.lob.b.lbah     = 1;
+	r.cmd_req = TASKFILE_CMD_REQ_NODATA;
+	r.dphase  = TASKFILE_DPHASE_NONE;
+	r.oflags.b.dev      = 1;
+	r.oflags.b.command  = 1;
+	r.iflags.b.command  = 1;
+	r.iflags.b.lbal     = 1;
+	r.iflags.b.lbam     = 1;
+	r.iflags.b.lbah     = 1;
 	r.lob.dev = 0x40;
 
 	if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
-		r.in_flags.hob.b.lbal  = 1;
-		r.in_flags.hob.b.lbam  = 1;
-		r.in_flags.hob.b.lbah  = 1;
+		r.iflags.b.hob_lbal  = 1;
+		r.iflags.b.hob_lbam  = 1;
+		r.iflags.b.hob_lbah  = 1;
 		r.lob.command = ATA_OP_READ_NATIVE_MAX_EXT;
 		if (do_taskfile_cmd(fd, &r, 10)) {
 			perror (" READ_NATIVE_MAX_ADDRESS_EXT failed");
@@ -865,7 +871,7 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 				     | ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
 		}
 	} else {
-		r.in_flags.lob.b.dev = 1;
+		r.iflags.b.dev = 1;
 		r.lob.command = ATA_OP_READ_NATIVE_MAX;
 		if (do_taskfile_cmd(fd, &r, 10)) {
 			perror (" READ_NATIVE_MAX_ADDRESS failed");
@@ -875,8 +881,6 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	}
 	return max;
 }
-
-enum {RW_READ = 0, RW_WRITE = 1, LBA28_OK = 0, LBA48_FORCE = 1};
 
 static void write_long_bad_sector (int fd, __u64 lba)
 {
@@ -893,8 +897,7 @@ static void write_long_bad_sector (int fd, __u64 lba)
 	memset(r->data, 0xff, 520);
 
 	// Try and ensure that the system doesn't have our sector in cache:
-	(void) ioctl(fd, BLKFLSBUF, NULL);
-	sync();
+	flush_buffer_cache(fd);
 
 	printf("Corrupting sector %llu (WRITE_LONG): ", lba);
 	fflush(stdout);
@@ -916,12 +919,11 @@ static void write_unc_bad_sector (int fd, __u64 lba, int flagged)
 	}
 
 	init_hdio_taskfile(r, ATA_OP_WRITE_UNC_EXT, RW_READ, LBA48_FORCE, lba, 1, 0);
-	r->out_flags.lob.b.feat = 1;
+	r->oflags.b.feat = 1;
 	r->lob.feat = flagged ? 0xaa : 0x55;
 
 	// Try and ensure that the system doesn't have our sector in cache:
-	(void) ioctl(fd, BLKFLSBUF, NULL);
-	sync();
+	flush_buffer_cache(fd);
 
 	printf("Corrupting sector %llu (WRITE_UNC_EXT as %s): ", lba, flagged ? "flagged" : "pseudo");
 	fflush(stdout);
@@ -961,15 +963,15 @@ static void do_write_sector (int fd, __u64 lba)
 	ata_op = (lba >> 28) ? ATA_OP_WRITE_PIO_EXT : ATA_OP_WRITE_PIO;
 	init_hdio_taskfile(r, ata_op, RW_WRITE, LBA28_OK, lba, 1, 512);
 
-	// Try and ensure that the system doesn't have our sector in cache:
-	(void) ioctl(fd, BLKFLSBUF, NULL);
-	sync();
-
 	printf("re-writing sector %llu: ", lba);
 	fflush(stdout);
 
 	rc = do_taskfile_cmd(fd, r, 12 /* seconds */);
 	printf("%s\n", rc ? "FAILED" : "succeeded");
+
+	// Try and ensure that the system doesn't have our sector in cache:
+	flush_buffer_cache(fd);
+
 	free(r);
 }
 
@@ -997,44 +999,16 @@ static void do_read_sector (int fd, __u64 lba)
 	free(r);
 }
 
-static void do_set_max_sectors (int fd, __u16 *id, __u64 nsects, int permanent)
+static void do_set_max_sectors (int fd, __u16 *id, __u64 max_lba, int permanent)
 {
 	struct hdio_taskfile r;
-	__u64 addr = nsects - 1;
+	__u8 nsect = permanent ? 1 : 0;
 
-	memset(&r, 0, sizeof(r));
-	r.cmd_req     = TASKFILE_CMD_REQ_NODATA;
-	r.xfer_method = TASKFILE_XFER_METHOD_NONE;
-
-	r.out_flags.lob.b.nsect   = 1;
-	r.out_flags.lob.b.lbal    = 1;
-	r.out_flags.lob.b.lbam    = 1;
-	r.out_flags.lob.b.lbah    = 1;
-	r.out_flags.lob.b.dev     = 1;
-	r.out_flags.lob.b.command = 1;
-	r.in_flags.lob.b.command  = 1;
-	r.lob.nsect = permanent ? 1 : 0;
-	r.lob.lbal  =  addr        & 0xff;
-	r.lob.lbam  = (addr >>  8) & 0xff;
-	r.lob.lbah  = (addr >> 16) & 0xff;
-	r.lob.dev   = 0x40;
-
-	if (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
-		r.out_flags.hob.b.nsect = 1;
-		r.out_flags.hob.b.lbal  = 1;
-		r.out_flags.hob.b.lbam  = 1;
-		r.out_flags.hob.b.lbah  = 1;
-		r.hob.lbal = (addr >> 24) & 0xff;
-		r.hob.lbam = (addr >> 32) & 0xff;
-		r.hob.lbah = (addr >> 40) & 0xff;
-		r.lob.command = ATA_OP_SET_MAX_EXT;
+	if ((max_lba >> 28) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
+		init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
 	} else {
-		if (addr >> 28) {
-			fprintf(stderr, "-N address is too large for drive;;aborting.\n");
-			return;
-		}
-		r.lob.dev |= (addr >> 24) & 0x0f;
-		r.lob.command  = ATA_OP_SET_MAX;
+		init_hdio_taskfile(&r, ATA_OP_SET_MAX, RW_READ, LBA28_OK, max_lba, nsect, 0);
+		r.oflags.b.feat = 1;  /* this ATA op requires feat==0 */
 	}
 
 	/* spec requires that we do this immediately in front.. racey */
@@ -1348,11 +1322,12 @@ open_ok:
 	}
 	if (set_max_sectors) {
 		if (get_native_max_sectors)
-			printf(" setting max visible sectors to %llu (%s)\n", set_max_sectors_value, set_max_permanent ? "permanent" : "temporary");
+			printf(" setting max visible sectors to %llu (%s)\n", set_max_addr, set_max_permanent ? "permanent" : "temporary");
 		id = get_identify_data(fd, id);
-		if (set_max_sectors_value < get_lba_capacity(id))
+		if (set_max_addr < get_lba_capacity(id))
 			confirm_i_know_what_i_am_doing("-Nnnnnn", "You have requested reducing the apparent size of the drive.\nThis is a BAD idea, and can easily destroy all of the drive's contents.");
-		do_set_max_sectors(fd, id, set_max_sectors_value, set_max_permanent);
+		do_set_max_sectors(fd, id, set_max_addr - 1, set_max_permanent);
+		id = (void *)-1; /* invalidate existing identify data */
 	}
 	if (make_bad_sector) {
 		id = get_identify_data(fd, id);
@@ -1371,9 +1346,8 @@ open_ok:
 		if (id) {
 			__u8 args[4] = {0,0,0,0};
 			args[0] = last_identify_op;
-			sync();
 			printf(" triggering \"stuck DRQ\" host state machine error\n");
-			sync();
+			flush_buffer_cache(fd);
 			sleep(1);
 			do_drive_cmd(fd, args);
 			perror("drq_hsm_error");
@@ -1484,7 +1458,7 @@ open_ok:
  * Note to self:  when compiled 32-bit (AMD,Mips64), the userspace version of this struct
  * is going to be 32-bits smaller than the kernel representation.. random stack corruption!
  */
-		static struct hd_geometry g;
+		static struct local_hd_geometry      g;
 		static struct local_hd_big_geometry bg;
 
 		if (0 == do_blkgetsize(fd, &blksize)) {
@@ -1890,7 +1864,7 @@ get_set_max_sectors_parms (void)
 {
 	get_native_max_sectors = noisy;
 	noisy = 1;
-	set_max_sectors = get_sector_value(1, 'p', &set_max_permanent, &set_max_sectors_value, 1, "-N");
+	set_max_sectors = get_sector_value(1, 'p', &set_max_permanent, &set_max_addr, 1, "-N");
 }
 
 static void

@@ -1,3 +1,8 @@
+hdparm-8.2
+	- clear feat register for safety with SET_MAX_ADDRESS command
+	- add note to manpage regarding possible -N transient failures
+	- IDE_TASKFILE bug fixes and cleanups: works with old IDE driver now
+	- fix misreporting of dma modes on some SATA-ATAPI bridged drives
 hdparm-8.1
 	- fixed -U parameter bug
 	- added ATA8 minor revision info to -I, courtesy of chrfranke

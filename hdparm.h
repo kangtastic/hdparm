@@ -26,7 +26,7 @@ struct local_hd_big_geometry {
        unsigned long	start;
 };
 
-struct hd_geometry {
+struct local_hd_geometry {
       unsigned char	heads;
       unsigned char	sectors;
       unsigned short	cylinders;

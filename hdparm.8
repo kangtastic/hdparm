@@ -1,4 +1,4 @@
-.TH HDPARM 8 "February 2008" "Version 8.1"
+.TH HDPARM 8 "February 2008" "Version 8.2"
 
 .SH NAME
 hdparm \- get/set hard disk parameters
@@ -330,7 +330,11 @@ Drives are supposed to allow only a single permanent
 change per session.  A hardware reset (or power cycle) is required
 before another permanent
 .I -N
-operation can succeed.
+operation can succeed.  Note that any attempt to set this value
+may fail if the disk is being accessed by other software at the same time.
+This is because setting the value requires a pair of back-to-back drive commands,
+but there is no way to prevent some other command from being inserted between
+them by the kernel.  So if it fails initially, just try again.
 .TP
 .I -n
 Get or set the "ignore write errors" flag in the driver.

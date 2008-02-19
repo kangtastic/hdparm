@@ -603,7 +603,7 @@ void identify (__u16 *id_supplied)
 	__u8  chksum = 0;
 	__u32 ll, mm, nn;
 	__u64 bb, bbbig; /* (:) */
-	int transport, is_cfa = 0;
+	int transport, is_cfa = 0, atapi_has_dmadir = 0, sdma_ok;
 
 	memcpy(val, id_supplied, sizeof(val));
 
@@ -979,24 +979,42 @@ void identify (__u16 *id_supplied)
 		}
 	}
 
-	/* DMA stuff. Check that only one DMA mode is selected. */
+	/* Some SATA-ATAPI devices use a different interpretation of IDENTIFY words for DMA modes */
+	if (dev == ATAPI_DEV && val[62] & 0x8000) {
+		atapi_has_dmadir = 1;
+		sdma_ok = 0;  /* word 62 has been re-purposed for non-sdma mode reporting */
+		printf("\tDMADIR bit required in PACKET commands\n");
+	} else {
+		__u8 w62 = val[62], hi = w62 >> 8, lo = w62;
+		if (!w62 || (lo & 0xf8))
+			sdma_ok = 0;
+		else if (hi && hi != 1 && hi != 2 && hi != 4)
+			sdma_ok = 0;
+		else
+			sdma_ok = 1;
+	}
+
 	printf("\tDMA: ");
-	if(!(val[CAPAB_0] & DMA_SUP)) {
+	/* DMA stuff. Check that only one DMA mode is selected. */
+	if(!atapi_has_dmadir && !(val[CAPAB_0] & DMA_SUP)) {
 		printf("not supported\n");
 	} else {
-		if(val[DMA_MODE] && !val[SINGLE_DMA] && !val[MULTI_DMA]) {
+		if(val[DMA_MODE] && !val[62] && !val[MULTI_DMA]) {
 			printf("sdma%u",(val[DMA_MODE] & MODE) >> 8);
 		} else {
-			if(val[SINGLE_DMA]) {
-				jj = val[SINGLE_DMA];   kk = val[SINGLE_DMA] >> 8;
+			if(sdma_ok) {
+				kk = val[62] >> 8;
+				jj = val[62];
 				err_dma += mode_loop(jj,kk,'s',&have_mode);
 			}
 			if(val[MULTI_DMA]) {
-				jj = val[MULTI_DMA];   kk = val[MULTI_DMA] >> 8;
+				kk = val[MULTI_DMA] >> 8;
+				jj = atapi_has_dmadir ? (val[62] >> 7) & 7 : val[MULTI_DMA];
 				err_dma += mode_loop(jj,kk,'m',&have_mode);
 			}
 			if((val[WHATS_VALID] & OK_W88) && val[ULTRA_DMA]) {
-				jj = val[ULTRA_DMA];   kk = val[ULTRA_DMA] >> 8;
+				kk = val[ULTRA_DMA] >> 8;
+				jj = atapi_has_dmadir ? val[62] & 0x7f : val[ULTRA_DMA];
 				err_dma += mode_loop(jj,kk,'u',&have_mode);
 			}
 			if(err_dma || !have_mode)
