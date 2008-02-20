@@ -1,3 +1,5 @@
+hdparm-8.4
+	- oops: v8.3 broke --write-sector.  Fix it again.
 hdparm-8.3
 	- fixed -i display for udma6
 	- try and exit with errno on fail paths, from Ladislav Michnovic

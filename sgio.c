@@ -312,6 +312,7 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	}
 	switch (r->cmd_req) {
 		case TASKFILE_CMD_REQ_OUT:
+		case TASKFILE_CMD_REQ_RAW_OUT:
 			data_bytes = r->obytes;
 			data       = r->data;
 			rw         = SG_WRITE;
