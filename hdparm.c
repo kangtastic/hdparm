@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v8.4"
+#define VERSION "v8.5"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -159,10 +159,8 @@ static void flush_buffer_cache (int fd)
 	sync();
 	if (ioctl(fd, BLKFLSBUF, NULL))		/* do it again, big time */
 		perror("BLKFLSBUF failed");
-	sync();
-	/* await completion */
-	if (do_drive_cmd(fd, NULL) && errno != EINVAL && errno != ENOTTY && errno != ENOIOCTLCMD)
-		perror("HDIO_DRIVE_CMD(null) (wait for flush complete) failed");
+	else
+		do_drive_cmd(fd, NULL);	/* IDE: await completion */
 	sync();
 }
 
@@ -678,6 +676,7 @@ do_set_security (int fd)
 	int err = 0;
 	const char *description;
 	struct hdio_taskfile *r;
+	__u8 *data;
 
 	r = malloc(sizeof(struct hdio_taskfile) + 512);
 	if (!r) {
@@ -686,13 +685,14 @@ do_set_security (int fd)
 		exit(err);
 	}
 
-	memset(r, 0, sizeof(struct hdio_taskfile));
+	memset(r, 0, sizeof(struct hdio_taskfile) + 512);
 	r->cmd_req	= TASKFILE_CMD_REQ_OUT;
 	r->dphase	= TASKFILE_DPHASE_PIO_OUT;
 	r->obytes	= 512;
 	r->lob.command	= security_command;
-	r->data[0]	= security_master & 0x01;
-	memcpy(&r->data[2], security_password, 32);
+	data		= (__u8*)r->data;
+	data[0]		= security_master & 0x01;
+	memcpy(data+2, security_password, 32);
 
 	/* Not setting any oflags causes a segfault and most
 	   of the times a kernel panic */
@@ -702,7 +702,7 @@ do_set_security (int fd)
 	switch (security_command) {
 		case ATA_OP_SECURITY_ERASE_UNIT:
 			description = "SECURITY_ERASE";
-			r->data[0] |= (enhanced_erase & 0x02);
+			data[0] |= (enhanced_erase & 0x02);
 			break;
 		case ATA_OP_SECURITY_DISABLE:
 			description = "SECURITY_DISABLE";
@@ -712,11 +712,11 @@ do_set_security (int fd)
 			break;
 		case ATA_OP_SECURITY_SET_PASS:
 			description = "SECURITY_SET_PASS";
-			r->data[1] = (security_mode & 0x01);
+			data[1] = (security_mode & 0x01);
 			if (security_master) {
 				/* master password revision code */
-				r->data[34] = 0x11;
-				r->data[35] = 0xff;
+				data[34] = 0x11;
+				data[35] = 0xff;
 			}
 			break;
 		default:
@@ -724,9 +724,9 @@ do_set_security (int fd)
 			exit(EINVAL);
 	}
 	printf(" Issuing %s command, password=\"%s\", user=%s",
-		description, security_password, r->data[0] ? "master" : "user");
+		description, security_password, data[0] ? "master" : "user");
 	if (security_command == ATA_OP_SECURITY_SET_PASS)
-		printf(", mode=%s", r->data[1] ? "max" : "high");
+		printf(", mode=%s", data[1] ? "max" : "high");
 	printf("\n");
 
 	/*

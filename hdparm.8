@@ -1,4 +1,4 @@
-.TH HDPARM 8 "February 2008" "Version 8.4"
+.TH HDPARM 8 "February 2008" "Version 8.4+"
 
 .SH NAME
 hdparm \- get/set SATA/ATA device parameters
@@ -134,11 +134,11 @@ after the option, usually a number like 2 or 4.
 .TP
 .I -f
 Sync and flush the buffer cache for the device on exit.
-This operation is also performed as part of the
+This operation is also performed internally as part of the
 .I -t
 and
 .I -T
-timings.
+timings and other flags.
 .TP
 .I -F
 Flush the on-drive write cache buffer (older drives may not implement this).
