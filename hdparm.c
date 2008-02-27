@@ -1,5 +1,5 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark Lord (C) 1994-2007 -- freely distributable */
+/*          - by Mark Lord (C) 1994-2008 -- freely distributable */
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v8.5"
+#define VERSION "v8.6"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -853,6 +853,50 @@ static void dump_sector (__u16 *w)
 	}
 }
 
+static __u64 get_start_lba (int fd)
+{
+	__u64 lba;
+
+	static struct local_hd_geometry      g;
+	static struct local_hd_big_geometry bg;
+
+	if (!ioctl(fd, HDIO_GETGEO_BIG, &bg)) {
+		lba = bg.start;
+	} else if (!ioctl(fd, HDIO_GETGEO, &g)) {
+		lba = g.start;
+	} else {
+		int err = errno;
+		perror(" HDIO_GETGEO failed: cannot determine correct LBA offset, aborting.");
+		exit(err);
+	}
+	return lba;
+}
+
+static int abort_if_not_full_device (int fd, __u64 lba, const char *devname)
+{
+	__u64 start = get_start_lba(fd);
+
+	char *fdevname = strdup(devname);
+	int i, shortened = 0;
+
+	for (i = strlen(fdevname); --i > 2 && (fdevname[i] >= '0' && fdevname[i] <= '9');) {
+		fdevname[i] = '\0';
+		shortened = 1;
+	}
+
+	if (!shortened)
+		fdevname = "the full disk";
+
+	if (start == 0ULL)
+		return 0;
+	fprintf(stderr, "Device %s has non-zero LBA starting offset of %llu.\n", devname, start);
+	fprintf(stderr, "Please use an absolute LBA with the /dev/ entry for the full device, rather than a partition name.\n");
+	fprintf(stderr, "%s is probably a partition of %s (?)\n", devname, fdevname);
+	fprintf(stderr, "The absolute LBA of sector %llu from %s should be %llu\n", lba, devname, start + lba);
+	fprintf(stderr, "Aborting.\n");
+	exit(EINVAL);
+}
+
 static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 {
 	int err = 0;
@@ -896,12 +940,13 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	return max;
 }
 
-static int do_make_bad_sector (int fd, __u16 *id, __u64 lba)
+static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname)
 {
 	int err = 0, has_write_unc;
 	struct hdio_taskfile *r;
 	const char *flagged;
 
+	abort_if_not_full_device(fd, lba, devname);
 	r = malloc(sizeof(struct hdio_taskfile) + 520);
 	if (!r) {
 		err = errno;
@@ -942,12 +987,13 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba)
 	return err;
 }
 
-static int do_write_sector (int fd, __u64 lba)
+static int do_write_sector (int fd, __u64 lba, const char *devname)
 {
 	int err = 0;
 	__u8 ata_op;
 	struct hdio_taskfile *r;
 
+	abort_if_not_full_device(fd, lba, devname);
 	r = malloc(sizeof(struct hdio_taskfile) + 512);
 	if (!r) {
 		err = errno;
@@ -974,12 +1020,13 @@ static int do_write_sector (int fd, __u64 lba)
 	return err;
 }
 
-static int do_read_sector (int fd, __u64 lba)
+static int do_read_sector (int fd, __u64 lba, const char *devname)
 {
 	int err = 0;
 	__u8 ata_op;
 	struct hdio_taskfile *r;
 
+	abort_if_not_full_device(fd, lba, devname);
 	r = malloc(sizeof(struct hdio_taskfile) + 512);
 	if (!r) {
 		err = errno;
@@ -1399,14 +1446,14 @@ open_ok:
 	if (make_bad_sector) {
 		id = get_identify_data(fd, id);
 		confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media\nThis is a BAD idea, and can easily result in total data loss.");
-		err = do_make_bad_sector(fd, id, make_bad_sector_addr);
+		err = do_make_bad_sector(fd, id, make_bad_sector_addr, devname);
 	}
 	if (write_sector) {
 		confirm_i_know_what_i_am_doing("--write-sector", "You are trying to deliberately overwrite a low-level sector on the media\nThis is a BAD idea, and can easily result in total data loss.");
-		err = do_write_sector(fd, write_sector_addr);
+		err = do_write_sector(fd, write_sector_addr, devname);
 	}
 	if (read_sector) {
-		err = do_read_sector(fd, read_sector_addr);
+		err = do_read_sector(fd, read_sector_addr, devname);
 	}
 	if (drq_hsm_error) {
 		id = get_identify_data(fd, id);

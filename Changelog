@@ -1,3 +1,5 @@
+hdparm-8.6
+	- add partition safeguards to r/w sector and make_bad_sector
 hdparm-8.5
 	- fix u8->u16 bug in security commands for all of 8.x series, Christian Franke
 	- try and quiet errors from flush_buffer_cache()
