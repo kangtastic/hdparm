@@ -46,41 +46,6 @@ enum {
 	ATA_OP_SECURITY_DISABLE		= 0xf6,
 };
 
-enum {	/* ioctl() numbers */
-	HDIO_DRIVE_CMD		= 0x031f,
-	HDIO_DRIVE_RESET	= 0x031c,
-	HDIO_DRIVE_TASK		= 0x031e,
-	HDIO_DRIVE_TASKFILE	= 0x031d,
-	HDIO_GETGEO		= 0x0301,
-	HDIO_GETGEO_BIG		= 0x0330,
-	HDIO_GET_32BIT		= 0x0309,
-	HDIO_GET_ACOUSTIC	= 0x030f,
-	HDIO_GET_BUSSTATE	= 0x031a,
-	HDIO_GET_DMA		= 0x030b,
-	HDIO_GET_IDENTITY	= 0x030d,
-	HDIO_GET_KEEPSETTINGS	= 0x0308,
-	HDIO_GET_MULTCOUNT	= 0x0304,
-	HDIO_GET_NOWERR		= 0x030a,
-	HDIO_GET_QDMA		= 0x0305,
-	HDIO_GET_UNMASKINTR	= 0x0302,
-	HDIO_OBSOLETE_IDENTITY	= 0x0307,
-	HDIO_SCAN_HWIF		= 0x0328,
-	HDIO_SET_32BIT		= 0x0324,
-	HDIO_SET_ACOUSTIC	= 0x032c,
-	HDIO_SET_BUSSTATE	= 0x032d,
-	HDIO_SET_DMA		= 0x0326,
-	HDIO_SET_KEEPSETTINGS	= 0x0323,
-	HDIO_SET_MULTCOUNT	= 0x0321,
-	HDIO_SET_NOWERR		= 0x0325,
-	HDIO_SET_PIO_MODE	= 0x0327,
-	HDIO_SET_QDMA		= 0x032e,
-	HDIO_SET_UNMASKINTR	= 0x0322,
-	HDIO_SET_WCACHE		= 0x032b,
-	HDIO_TRISTATE_HWIF	= 0x031b,
-	HDIO_UNREGISTER_HWIF	= 0x032a,
-	CDROM__SPEED		= 0x5322,
-};
-
 /*
  * Some useful ATA register bits
  */
@@ -184,6 +149,55 @@ struct hdio_taskfile {
 	unsigned long		ibytes;
 	__u16			data[0];
 };
+
+struct scsi_sg_io_hdr {
+	int			interface_id;
+	int			dxfer_direction;
+	unsigned char		cmd_len;
+	unsigned char		mx_sb_len;
+	unsigned short		iovec_count;
+	unsigned int		dxfer_len;
+	void *			dxferp;
+	unsigned char *		cmdp;
+	void *			sbp;
+	unsigned int		timeout;
+	unsigned int		flags;
+	int			pack_id;
+	void *			usr_ptr;
+	unsigned char		status;
+	unsigned char		masked_status;
+	unsigned char		msg_status;
+	unsigned char		sb_len_wr;
+	unsigned short		host_status;
+	unsigned short		driver_status;
+	int			resid;
+	unsigned int		duration;
+	unsigned int		info;
+};
+
+#ifndef SG_DXFER_NONE
+	#define SG_DXFER_NONE		-1
+	#define SG_DXFER_TO_DEV		-2
+	#define SG_DXFER_FROM_DEV	-3
+	#define SG_DXFER_TO_FROM_DEV	-4
+#endif
+
+#define SG_READ			0
+#define SG_WRITE		1
+
+#define SG_CHECK_CONDITION	0x02
+#define SG_DRIVER_SENSE		0x08
+
+#define SG_ATA_16		0x85
+#define SG_ATA_16_LEN		16
+
+#define SG_ATA_LBA48		1
+#define SG_ATA_PROTO_NON_DATA	( 3 << 1)
+#define SG_ATA_PROTO_PIO_IN	( 4 << 1)
+#define SG_ATA_PROTO_PIO_OUT	( 5 << 1)
+#define SG_ATA_PROTO_DMA	( 6 << 1)
+#define SG_ATA_PROTO_UDMA_IN	(11 << 1) /* not yet supported in libata */
+#define SG_ATA_PROTO_UDMA_OUT	(12 << 1) /* not yet supported in libata */
 
 void tf_init (struct ata_tf *tf, __u8 ata_op, __u64 lba, unsigned int nsect);
 __u64 tf_to_lba (struct ata_tf *tf);

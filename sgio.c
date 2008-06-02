@@ -9,31 +9,15 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <linux/fs.h>
 #include <scsi/scsi.h>
 #include <scsi/sg.h>
 
-//#include "hdparm.h"
 #include "sgio.h"
+#include "hdparm.h"
+
+#include <linux/hdreg.h>
 
 extern int verbose;
-
-#define SG_READ			0
-#define SG_WRITE		1
-
-#define SG_CHECK_CONDITION	0x02
-#define SG_DRIVER_SENSE		0x08
-
-#define SG_ATA_16		0x85
-#define SG_ATA_16_LEN		16
-
-#define SG_ATA_LBA48		1
-#define SG_ATA_PROTO_NON_DATA	( 3 << 1)
-#define SG_ATA_PROTO_PIO_IN	( 4 << 1)
-#define SG_ATA_PROTO_PIO_OUT	( 5 << 1)
-#define SG_ATA_PROTO_DMA	( 6 << 1)
-#define SG_ATA_PROTO_UDMA_IN	(11 << 1) /* not yet supported in libata */
-#define SG_ATA_PROTO_UDMA_OUT	(12 << 1) /* not yet supported in libata */
 
 /*
  * Taskfile layout for SG_ATA_16 cdb:
@@ -85,6 +69,8 @@ void tf_init (struct ata_tf *tf, __u8 ata_op, __u64 lba, unsigned int nsect)
 	}
 }
 
+#ifdef SG_IO
+
 __u64 tf_to_lba (struct ata_tf *tf)
 {
 	__u32 lba24, lbah;
@@ -97,23 +83,6 @@ __u64 tf_to_lba (struct ata_tf *tf)
 		lbah = (tf->dev & 0x0f);
 	lba64 = (((__u64)lbah) << 24) | (__u64)lba24;
 	return lba64;
-}
-
-static void dump_bytes (const char *prefix, unsigned char *p, int len)
-{
-	int i;
-
-	if (prefix)
-		fprintf(stderr, "%s: ", prefix);
-	for (i = 0; i < len; ++i)
-		fprintf(stderr, " %02x", p[i]);
-	fprintf(stderr, "\n");
-}
-
-static int bad_sense (unsigned char *sb, int len)
-{
-	dump_bytes("SG_IO: bad/missing ATA_16 sense data:", sb, len);
-	return EIO;
 }
 
 enum {
@@ -130,12 +99,30 @@ enum {
 	SG_CDB2_CHECK_COND	= 1 << 5,
 };
 
+static void dump_bytes (const char *prefix, unsigned char *p, int len)
+{
+	int i;
+
+	if (prefix)
+		fprintf(stderr, "%s: ", prefix);
+	for (i = 0; i < len; ++i)
+		fprintf(stderr, " %02x", p[i]);
+	fprintf(stderr, "\n");
+}
+
+static int bad_sense (unsigned char *sb, int len)
+{
+	if (verbose)
+		dump_bytes("SG_IO: bad/missing ATA_16 sense data:", sb, len);
+	return EIO;
+}
+
 int sg16 (int fd, int rw, struct ata_tf *tf,
 	void *data, unsigned int data_bytes, unsigned int timeout_secs)
 {
 	unsigned char cdb[SG_ATA_16_LEN];
 	unsigned char sb[32], *desc;
-	struct sg_io_hdr io_hdr;
+	struct scsi_sg_io_hdr io_hdr;
 
 	memset(&cdb, 0, sizeof(cdb));
 	cdb[ 0] = SG_ATA_16;
@@ -167,7 +154,7 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	}
 
 	memset(&sb,     0, sizeof(sb));
-	memset(&io_hdr, 0, sizeof(struct sg_io_hdr));
+	memset(&io_hdr, 0, sizeof(struct scsi_sg_io_hdr));
 	io_hdr.interface_id	= 'S';
 	io_hdr.cmd_len		= SG_ATA_16_LEN;
 	io_hdr.mx_sb_len	= sizeof(sb);
@@ -226,7 +213,7 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	}
 	if (verbose)
 		fprintf(stderr, "      ATA_16 tf->status=0x%02x tf->error=0x%02x\n", tf->status, tf->error);
-#if 0
+#if 0 //FIXME: we have to check this somewhere !!
 	if (tf->status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
 		errno = EIO;
 		return -1;
@@ -235,8 +222,12 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	return 0;
 }
 
+#endif /* SG_IO */
+
 int do_drive_cmd (int fd, unsigned char *args)
 {
+#ifdef SG_IO
+
 	struct ata_tf tf;
 	void *data = NULL;
 	unsigned int data_bytes = 0;
@@ -280,6 +271,7 @@ int do_drive_cmd (int fd, unsigned char *args)
 	return rc;
 
 use_legacy_ioctl:
+#endif /* SG_IO */
 	if (verbose)
 		fprintf(stderr, "Trying legacy HDIO_DRIVE_CMD\n");
 	return ioctl(fd, HDIO_DRIVE_CMD, args);
@@ -287,10 +279,12 @@ use_legacy_ioctl:
 
 int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 {
+	int rc;
+#ifdef SG_IO
 	struct ata_tf tf;
 	void *data = NULL;
 	unsigned int data_bytes = 0;
-	int rc, rw = SG_READ;
+	int rw = SG_READ;
 	/*
 	 * Reformat and try to issue via SG_IO:
 	 */
@@ -301,7 +295,7 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	if (r->oflags.b.lbam)	tf.lob.lbam  = r->lob.lbam;
 	if (r->oflags.b.lbah)	tf.lob.lbah  = r->lob.lbah;
 	if (r->oflags.b.dev)	tf.dev       = r->lob.dev;
-	if (r->oflags.b.command)	tf.command   = r->lob.command;
+	if (r->oflags.b.command) tf.command  = r->lob.command;
 	if ((r->oflags.all >> 8) || (r->iflags.all >> 8)) {
 		tf.is_lba48 = 1;
 		if (r->oflags.b.hob_feat)	tf.hob.feat  = r->hob.feat;
@@ -352,6 +346,9 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	return rc;
 
 use_legacy_ioctl:
+#else
+	timeout_secs = 0;	/* keep compiler happy */
+#endif /* SG_IO */
 	if (verbose)
 		fprintf(stderr, "trying legacy HDIO_DRIVE_TASKFILE\n");
 	errno = 0;
@@ -380,7 +377,7 @@ use_legacy_ioctl:
 	}
 	return rc;
 }
-#include <linux/hdreg.h>
+
 void init_hdio_taskfile (struct hdio_taskfile *r, __u8 ata_op, int rw, int force_lba48,
 				__u64 lba, unsigned int nsect, int data_bytes)
 {

@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v8.6"
+#define VERSION "v8.7"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -89,11 +89,6 @@ static int get_powermode  = 0, set_powermode = 0;
 static int set_apmmode = 0, get_apmmode= 0, apmmode = 0;
 static int get_cdromspeed = 0, set_cdromspeed = 0, cdromspeed = 0;
 static int do_IDentity = 0, drq_hsm_error = 0;
-static int get_unregister = 0, set_unregister = 0, unregister = 0;
-static int	scan_hwif = 0;
-static int	hwif_data = 0;
-static int	hwif_ctrl = 0;
-static int	hwif_irq = 0;
 static int	set_busstate = 0, get_busstate = 0, busstate = 0;
 static int	set_reread_partn = 0, get_reread_partn;
 static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
@@ -111,7 +106,6 @@ static int   set_max_sectors = 0, set_max_permanent, get_native_max_sectors = 0;
 static __u64 set_max_addr = 0;
 
 static int	get_doreset = 0, set_doreset = 0;
-static int	get_tristate = 0, set_tristate = 0, tristate = 0;
 static int	i_know_what_i_am_doing = 0;
 
 const int timeout_12secs = 12;
@@ -287,26 +281,6 @@ quit:
 	munmap(buf, TIMING_BUF_BYTES);
 }
 
-static int do_blkgetsize (int fd, unsigned long long *blksize64)
-{
-	int		rc;
-	unsigned int	blksize32 = 0;
-
-#ifdef BLKGETSIZE64
-	if (0 == ioctl(fd, BLKGETSIZE64, blksize64)) {	// returns bytes
-		*blksize64 /= 512;
-		return 0;
-	}
-#endif
-	rc = ioctl(fd, BLKGETSIZE, &blksize32);	// returns sectors
-	if (rc) {
-		rc = errno;
-		perror(" BLKGETSIZE failed");
-	}
-	*blksize64 = blksize32;
-	return rc;
-}
-
 static int time_device (int fd)
 {
 	char *buf;
@@ -319,11 +293,11 @@ static int time_device (int fd)
 	 * get device size
 	 */
 	if (do_ctimings || do_timings) {
-		unsigned long long blksize;
+		__u64 nsectors;
 		do_flush = 1;
-		err = do_blkgetsize(fd, &blksize);
+		err = get_dev_geometry(fd, NULL, NULL, NULL, NULL, &nsectors);
 		if (!err)
-			max_iterations = blksize / (2 * 1024) / TIMING_BUF_MB;
+			max_iterations = nsectors / (2 * 1024) / TIMING_BUF_MB;
 	}
 	buf = prepare_timing_buf(TIMING_BUF_BYTES);
 	if (!buf)
@@ -555,8 +529,9 @@ static void interpret_standby (void)
 				if (hrs)	  printf("%u hours", hrs);
 				if (hrs && mins)  printf(" + ");
 				if (mins)	  printf("%u minutes", mins);
-			} else
+			} else {
 				printf("illegal value");
+			}
 			break;
 	}
 	printf(")\n");
@@ -853,46 +828,29 @@ static void dump_sector (__u16 *w)
 	}
 }
 
-static __u64 get_start_lba (int fd)
-{
-	__u64 lba;
-
-	static struct local_hd_geometry      g;
-	static struct local_hd_big_geometry bg;
-
-	if (!ioctl(fd, HDIO_GETGEO_BIG, &bg)) {
-		lba = bg.start;
-	} else if (!ioctl(fd, HDIO_GETGEO, &g)) {
-		lba = g.start;
-	} else {
-		int err = errno;
-		perror(" HDIO_GETGEO failed: cannot determine correct LBA offset, aborting.");
-		exit(err);
-	}
-	return lba;
-}
-
 static int abort_if_not_full_device (int fd, __u64 lba, const char *devname)
 {
-	__u64 start = get_start_lba(fd);
-
+	__u64 start_lba;
+	int i, err, shortened = 0;
 	char *fdevname = strdup(devname);
-	int i, shortened = 0;
 
+	err = get_dev_geometry(fd, NULL, NULL, NULL, &start_lba, NULL);
+	if (err)
+		exit(err);
 	for (i = strlen(fdevname); --i > 2 && (fdevname[i] >= '0' && fdevname[i] <= '9');) {
 		fdevname[i] = '\0';
 		shortened = 1;
 	}
 
 	if (!shortened)
-		fdevname = "the full disk";
+		fdevname = strdup("the full disk");
 
-	if (start == 0ULL)
+	if (start_lba == 0ULL)
 		return 0;
-	fprintf(stderr, "Device %s has non-zero LBA starting offset of %llu.\n", devname, start);
+	fprintf(stderr, "Device %s has non-zero LBA starting offset of %llu.\n", devname, start_lba);
 	fprintf(stderr, "Please use an absolute LBA with the /dev/ entry for the full device, rather than a partition name.\n");
 	fprintf(stderr, "%s is probably a partition of %s (?)\n", devname, fdevname);
-	fprintf(stderr, "The absolute LBA of sector %llu from %s should be %llu\n", lba, devname, start + lba);
+	fprintf(stderr, "The absolute LBA of sector %llu from %s should be %llu\n", lba, devname, start_lba + lba);
 	fprintf(stderr, "Aborting.\n");
 	exit(EINVAL);
 }
@@ -1085,7 +1043,7 @@ void process_dev (char *devname)
 	fd = open (devname, open_flags);
 	if (fd < 0) {
 		if (errno == EROFS) {
-			open_flags &= ~O_WRONLY;
+			open_flags = (open_flags & ~O_RDWR) | O_RDONLY;
 			fd = open (devname, open_flags);
 			if (fd >= 0)
 				goto open_ok;
@@ -1104,25 +1062,6 @@ open_ok:
 		if (ioctl(fd, BLKRASET, fsreadahead)) {
 			err = errno;
 			perror(" BLKRASET failed");
-		}
-	}
-	if (set_unregister) {
-		if (get_unregister)
-			printf(" attempting to unregister hwif#%u\n", set_unregister);
-		if (ioctl(fd, HDIO_UNREGISTER_HWIF, set_unregister)) {
-			err = errno;
-			perror(" HDIO_UNREGISTER_HWIF failed");
-		}
-	}
-	if (scan_hwif) {
-		int	args[3];
-		printf(" attempting to scan hwif (0x%x, 0x%x, %u)\n", hwif_data, hwif_ctrl, hwif_irq);
-		args[0] = hwif_data;
-		args[1] = hwif_ctrl;
-		args[2] = hwif_irq;
-		if (ioctl(fd, HDIO_SCAN_HWIF, args)) {
-			err = errno;
-			perror(" HDIO_SCAN_HWIF failed");
 		}
 	}
 	if (set_piomode) {
@@ -1188,14 +1127,9 @@ open_ok:
 		}
 	}
 	if (set_dma_q) {
-		if (get_dma_q) {
-			printf(" setting DMA queue_depth to %d", dma_q);
-			on_off(dma_q);
-		}
-		if (ioctl(fd, HDIO_SET_QDMA, dma_q)) {
-			err = errno;
-			perror(" HDIO_SET_QDMA failed");
-		}
+		if (get_dma_q)
+			printf(" setting queue_depth to %d\n", dma_q);
+		err = sysfs_set_attr(fd, "device/queue_depth", "%u", &dma_q, 1);
 	}
 	if (set_nowerr) {
 		if (get_nowerr) {
@@ -1475,8 +1409,7 @@ open_ok:
 		if (do_drive_cmd(fd, args)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD(hitachisensecondition) failed");
-		}
-		else {
+		} else {
 			printf(" drive temperature (celsius) is:  ");
 			if (args[2]==0)
 				printf("under -20");
@@ -1502,6 +1435,7 @@ open_ok:
 			printf(" IO_support    =%3ld (", parm);
 			switch (parm) {
 				case 0:	printf("default) \n");
+					break;
 				case 2: printf("16-bit)\n");
 					break;
 				case 1:	printf("32-bit)\n");
@@ -1512,7 +1446,7 @@ open_ok:
 					break;
 				default:printf("\?\?\?)\n");
 			}
-               } else {
+               } else if (get_io32bit) {
                        err = errno;
                        perror(" HDIO_GET_32BIT failed");
 		}
@@ -1521,7 +1455,7 @@ open_ok:
 		if (0 == ioctl(fd, HDIO_GET_UNMASKINTR, &parm)) {
 			printf(" unmaskirq     = %2ld", parm);
 			on_off(parm);
-               } else {
+               } else if (get_unmask) {
                        err = errno;
                        perror(" HDIO_GET_UNMASKINTR failed");
 		}
@@ -1534,25 +1468,21 @@ open_ok:
 				printf(" (DMA-Assisted-PIO)\n");
 			else
 				on_off(parm);
-                } else {
+                } else if (get_dma) {
                        err = errno;
                        perror(" HDIO_GET_DMA failed");
 		}
 	}
 	if (get_dma_q) {
-		if(ioctl(fd, HDIO_GET_QDMA, &parm)) {
-			err = errno;
-			perror(" HDIO_GET_QDMA failed");
-		} else {
-			printf(" queue_depth   = %2ld", parm);
-			on_off(parm);
-		}
+		err = sysfs_get_attr(fd, "device/queue_depth", "%u", &dma_q, NULL, 1);
+		if (!err)
+			printf(" queue_depth   = %2u\n", dma_q);
 	}
 	if (do_defaults || get_keep) {
 		if (0 == ioctl(fd, HDIO_GET_KEEPSETTINGS, &parm)) {
 			printf(" keepsettings  = %2ld", parm);
 			on_off(parm);
-		} else {
+		} else if (get_keep) {
 			err = errno;
                         perror(" HDIO_GET_KEEPSETTINGS failed");
 		}
@@ -1570,7 +1500,7 @@ open_ok:
 		if (ioctl(fd, BLKROGET, &parm)) {
 			err = errno;
 			perror(" BLKROGET failed");
-		} else {
+		} else if (get_readonly) {
 			printf(" readonly      = %2ld", parm);
 			on_off(parm);
 		}
@@ -1579,31 +1509,19 @@ open_ok:
 		if (ioctl(fd, BLKRAGET, &parm)) {
 			err = errno;
 			perror(" BLKRAGET failed");
-		} else {
+		} else if (get_fsreadahead) {
 			printf(" readahead     = %2ld", parm);
 			on_off(parm);
 		}
 	}
 	if (do_defaults || get_geom) {
-		unsigned long long blksize;
-		static const char msg[] = " geometry      = %u/%u/%u, sectors = %lld, start = %ld\n";
-/*
- * Note to self:  when compiled 32-bit (AMD,Mips64), the userspace version of this struct
- * is going to be 32-bits smaller than the kernel representation.. random stack corruption!
- */
-		static struct local_hd_geometry      g;
-		static struct local_hd_big_geometry bg;
+		__u32 cyls = 0, heads = 0, sects = 0;
+		__u64 start_lba = 0, nsectors = 0;
+		err = get_dev_geometry (fd, &cyls, &heads, &sects, &start_lba, &nsectors);
 
-		err = do_blkgetsize(fd, &blksize);
-		if (!err) {
-			if (!ioctl(fd, HDIO_GETGEO_BIG, &bg))
-				printf(msg, bg.cylinders, bg.heads, bg.sectors, blksize, bg.start);
-			else if (ioctl(fd, HDIO_GETGEO, &g)) {
-				err = errno;
-				perror(" HDIO_GETGEO failed");
-			} else
-				printf(msg, g.cylinders, g.heads, g.sectors, blksize, g.start);
-		}
+		if (!err)
+			printf(" geometry      = %u/%u/%u, sectors = %lld, start = %lld\n",
+				cyls, heads, sects, nsectors, start_lba);
 	}
 	if (get_powermode) {
 		__u8 args[4] = {ATA_OP_CHECKPOWERMODE1,0,0,0};
@@ -1613,8 +1531,9 @@ open_ok:
 		 && do_drive_cmd(fd, args)) {
 			err = errno;
 			state = "unknown";
-		} else
+		} else {
 			state = (args[2] == 255) ? "active/idle" : "standby";
+		}
 		printf(" drive state is:  %s\n", state);
 	}
 	if (do_identity) {
@@ -1623,12 +1542,13 @@ open_ok:
 		if (!ioctl(fd, HDIO_GET_IDENTITY, id2)) {
 			if (multcount != -1) {
 				id2[59] = multcount | 0x100;
-			} else
+			} else {
 				id2[59] &= ~0x100;
+			}
 			dump_identity(id2);
-		} else if (errno == -ENOMSG)
+		} else if (errno == -ENOMSG) {
 			printf(" no identification info available\n");
-		else {
+		} else {
 			err = errno;
 			perror(" HDIO_GET_IDENTITY failed");
 		}
@@ -1682,8 +1602,9 @@ open_ok:
 		if (ioctl(fd, HDIO_GET_BUSSTATE, &parm)) {
 			err = errno;
 			perror(" HDIO_GET_BUSSTATE failed");
-		} else
+		} else {
 			printf(" busstate      = %2ld (%s)\n", parm, busstate_str(parm));
+		}
 	}
 	if (get_native_max_sectors) {
 		__u64 visible, native;
@@ -1729,15 +1650,6 @@ open_ok:
 			perror(" HDIO_DRIVE_RESET failed");
 		}
 	}
-	if (set_tristate) {
-		__u8 args[4] = {0,tristate,0,0};
-		if (get_tristate)
-			printf(" setting tri-state to %d\n", tristate);
-		if (ioctl(fd, HDIO_TRISTATE_HWIF, &args)) {
-			err = errno;
-			perror(" HDIO_TRISTATE_HWIF failed");
-		}
-	}
 	close (fd);
 	if (err)
 		exit (err);
@@ -1776,20 +1688,20 @@ static void usage_help (int rc)
 	" -p   set PIO mode on IDE interface chipset (0,1,2,3,4,...)\n"
 	" -P   set drive prefetch count\n"
 	" -q   change next setting quietly\n"
-	" -Q   get/set DMA tagged-queuing depth (if supported)\n"
+	" -Q   get/set DMA queue_depth (if supported)\n"
 	" -r   get/set device  readonly flag (DANGEROUS to set)\n"
-	" -R   register an IDE interface (DANGEROUS)\n"
+	" -R   obsolete\n"
 	" -s   set power-up in standby flag (0/1) (DANGEROUS)\n"
 	" -S   set standby (spindown) timeout\n"
 	" -t   perform device read timings\n"
 	" -T   perform cache read timings\n"
 	" -u   get/set unmaskirq flag (0/1)\n"
-	" -U   un-register an IDE interface (DANGEROUS)\n"
+	" -U   obsolete\n"
 	" -v   defaults; same as -acdgkmur for IDE drives\n"
 	" -V   display program version and exit immediately\n"
 	" -w   perform device reset (DANGEROUS)\n"
 	" -W   get/set drive write-caching flag (0/1)\n"
-	" -x   tristate device for hotswap (0/1) (DANGEROUS)\n"
+	" -x   obsolete\n"
 	" -X   set IDE xfer mode (DANGEROUS)\n"
 	" -y   put drive in standby mode\n"
 	" -Y   put drive to sleep\n"
@@ -1797,6 +1709,8 @@ static void usage_help (int rc)
 	" -z   re-read partition table\n"
 	" --direct          use O_DIRECT to bypass page cache for timings\n"
 	" --drq-hsm-error   crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
+	" --fibmap          show device extents (and fragmentation) for a file\n"
+	" --fibmap-sector   show absolute LBA of a specfic sector of a file\n"
 	" --Istdin          read identify data from stdin as ASCII hex\n"
 	" --Istdout         write identify data to stdout as ASCII hex\n"
 	" --make-bad-sector deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
@@ -1931,7 +1845,6 @@ numeric_parm (char c, const char *name, int *val, int *setparm, int *getparm, in
 		got_digit = 1;
 	}
 	if ((set_only && !got_digit) || *val < min || *val > max) {
-		*val = min;	//FIXME?
 		fprintf(stderr, "  -%c: bad/missing %s value (%d..%d)\n", c, name, min, max);
 		exit(EINVAL);
 	}
@@ -1970,7 +1883,7 @@ static void get_security_password (int handle_NULL)
 }
 
 static int
-get_sector_value (int optional, const char flag_c, int *flag_p, __u64 *value_p, unsigned int min_value, const char *emsg)
+get_lba_parm (int optional, const char flag_c, int *flag_p, __u64 *value_p, unsigned int min_value, const char *emsg)
 {
 	int got_value = 0, got_digit = 0;
 	const __u64 limit = (1ULL << 48) - 1;
@@ -2012,7 +1925,7 @@ get_set_max_sectors_parms (void)
 {
 	get_native_max_sectors = noisy;
 	noisy = 1;
-	set_max_sectors = get_sector_value(1, 'p', &set_max_permanent, &set_max_addr, 1, "-N");
+	set_max_sectors = get_lba_parm(1, 'p', &set_max_permanent, &set_max_addr, 1, "-N");
 }
 
 static void
@@ -2062,6 +1975,50 @@ handle_standalone_longarg (char *name)
 	}
 }
 
+static void
+get_filename_parm (char **result, const char *emsg)
+{
+	if (!*argp && argc)
+		argp = *argv++, --argc;
+	if (!argp || !*argp) {
+		fprintf(stderr, "  %s: bad/missing filename parameter\n", emsg);
+		exit(EINVAL);
+	}
+	*result = argp;
+	argp += strlen(argp);
+	// if (argc) argp = *argv++, --argc;
+}
+
+static void
+do_fibmap_sector (const char *name)
+{
+	int err;
+	char *path;
+	__u64 sector, lba;
+
+	get_filename_parm(&path, name);
+	get_lba_parm(0, 0, NULL, &sector, 0, name);
+	if (num_flags_processed || argc)
+		usage_help(EINVAL);
+	err = do_fibmap(path, sector, &lba);
+	if (!err)
+		printf("%s[%llu]: %llu\n", path, sector, lba);
+	else if (err == EBADSLT)
+		fprintf(stderr, "%s[%llu]: unallocated\n", path, sector);
+	exit(err);
+}
+
+static void
+do_fibmap_file (const char *name)
+{
+	char *path;
+
+	get_filename_parm(&path, name);
+	if (num_flags_processed || argc)
+		usage_help(EINVAL);
+	exit(do_fibmap(path, 0, NULL));
+}
+
 static int
 get_longarg (void)
 {
@@ -2080,15 +2037,19 @@ get_longarg (void)
 		--num_flags_processed;	/* doesn't count as an action flag */
 	} else if (0 == strcasecmp(name, "drq-hsm-error")) {
 		drq_hsm_error = 1;
+	} else if (0 == strcasecmp(name, "fibmap-sector")) {
+		do_fibmap_sector(name);
+	} else if (0 == strcasecmp(name, "fibmap")) {
+		do_fibmap_file(name);
 	} else if (0 == strcasecmp(name, "make-bad-sector")) {
 		make_bad_sector = 1;
-		get_sector_value(0, 'f', &make_bad_sector_flagged, &make_bad_sector_addr, 0, "--make-bad-sector");
+		get_lba_parm(0, 'f', &make_bad_sector_flagged, &make_bad_sector_addr, 0, name);
 	} else if (0 == strcasecmp(name, "write-sector") || 0 == strcasecmp(name, "repair-sector")) {
 		write_sector = 1;
-		get_sector_value(0, 0, NULL, &write_sector_addr, 0, "--write-sector");
+		get_lba_parm(0, 0, NULL, &write_sector_addr, 0, name);
 	} else if (0 == strcasecmp(name, "read-sector")) {
 		read_sector = 1;
-		get_sector_value(0, 0, NULL, &read_sector_addr, 0, "--read-sector");
+		get_lba_parm(0, 0, NULL, &read_sector_addr, 0, name);
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
 	} else if (0 == strcasecmp(name, "security-mode")) {
@@ -2185,19 +2146,17 @@ int main (int _argc, char **_argv)
 				case              'N': get_set_max_sectors_parms(); break;
 				case     SET_PARM('P',"prefetch",prefetch,0,255);
 				case              'q': quiet = 1; noisy = 0; break;
-				case     SET_PARM('Q',"queue-depth",dma_q,0,32);
+				case GET_SET_PARM('Q',"queue-depth",dma_q,1,1024);
 				case     SET_PARM('s',"powerup-in-standby",powerup_in_standby,0,1);
 				case     SET_PARM('S',"standby-interval",standby,0,255);
 				case GET_SET_PARM('r',"read-only",readonly,0,1);
 				case      DO_FLAG('t',do_timings);
 				case      DO_FLAG('T',do_ctimings);
 				case GET_SET_PARM('u',"unmask-irq",unmask,0,1);
-				case     SET_PARM('U',"unregister-interface",unregister,0,63);
 				case      DO_FLAG('v',do_defaults);
 				case              'V': fprintf(stdout, "%s %s\n", progname, VERSION); exit(0);
 				case     SET_FLAG('w',doreset);
 				case GET_SET_PARM('W',"write-cache",wcache,0,1);
-				case     SET_PARM('x',"tristate-device",tristate,0,1);
 				case     SET_FLAG('y',standbynow);
 				case     SET_FLAG('Y',sleepnow);
 				case     SET_FLAG('z',reread_partn);
@@ -2222,31 +2181,6 @@ int main (int _argc, char **_argv)
 						fprintf(stderr, "-X: missing value\n");
 					break;
 
-				case 'R':
-					if (!*argp && argc && isdigit(**argv))
-						argp = *argv++, --argc;
-					if(! argp) {
-						fprintf(stderr, "expected hwif_data\n");
-						exit(EINVAL);
-					}
-					sscanf(argp++, "%i", &hwif_data);
-					if (argc && isdigit(**argv))
-						argp = *argv++, --argc;
-					else {
-						fprintf(stderr, "expected hwif_ctrl\n");
-						exit(EINVAL);
-					}
-					sscanf(argp, "%i", &hwif_ctrl);
-					if (argc && isdigit(**argv))
-						argp = *argv++, --argc;
-					else {
-						fprintf(stderr, "expected hwif_irq\n");
-						exit(EINVAL);
-					}
-					sscanf(argp, "%i", &hwif_irq);
-					*argp = '\0';
-					scan_hwif = 1;
-					break;
 
 				default:
 					usage_help(EINVAL);
@@ -2256,5 +2190,5 @@ int main (int _argc, char **_argv)
 		if (!argc)
 			usage_help(EINVAL);
 	}
-	exit (0);
+	return 0;
 }

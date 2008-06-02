@@ -10,7 +10,7 @@ some older kernels for using hdparm with ATAPI (CD/DVD/tape) drives.
 
 Both of these are required for any kernel prior to 2.6.22,
 and only the second one may be needed with 2.6.23.
-The 2.6.24 kernel (and beyond) should not require either patch.
+The 2.6.24 kernel (and beyond) does not require either patch.
 
 * * * 
 

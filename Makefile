@@ -16,13 +16,16 @@ endif
 
 CFLAGS := -O2 -W -Wall -Wbad-function-cast -Wcast-align -Wpointer-arith -Wcast-qual -Wshadow -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -fkeep-inline-functions -Wwrite-strings -Waggregate-return -Wnested-externs -Wtrigraphs $(CFLAGS)
 
+#LDFLAGS = -s -static
 LDFLAGS = -s
 INSTALL = install
 INSTALL_DATA = $(INSTALL) -m 644
 INSTALL_DIR = $(INSTALL) -m 755 -d
 INSTALL_PROGRAM = $(INSTALL)
 
-OBJS = hdparm.o identify.o sgio.o
+OBJS = hdparm.o identify.o sgio.o sysfs.o geom.o fibmap.o
+
+all: hdparm
 
 hdparm: hdparm.h sgio.h $(OBJS)
 	$(CC) $(LDFLAGS) -o hdparm $(OBJS)
@@ -34,8 +37,6 @@ hdparm.o:	hdparm.h sgio.h
 
 identify.o:	hdparm.h
 
-all: hdparm
- 
 sgio.o: sgio.c sgio.h hdparm.h
 
 install: all hdparm.8

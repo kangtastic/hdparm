@@ -1,3 +1,14 @@
+hdparm-8.7
+	- fixes to permit building against older kernels which lack SG_IO
+	- added build script for empeg systems
+	- removed -R, -U flags: kernel support is broken and being removed
+	- fixed IO_support output
+	- prevent error messages from default flags
+	- added sysfs.c, geom.c, fibmap.c
+	- use sysfs for device start_lba/nsectors values whereever possible (for >= 2TB drives)
+	- new standalone --fibmap and --fibmap-sector flags
+	- converted -Q to access the queue_depth attribute from sysfs (now works for SATA!)
+	- fixed readonly issue with optical drives that some people noticed
 hdparm-8.6
 	- add partition safeguards to r/w sector and make_bad_sector
 hdparm-8.5

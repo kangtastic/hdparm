@@ -1,4 +1,4 @@
-.TH HDPARM 8 "February 2008" "Version 8.6"
+.TH HDPARM 8 "May 2008" "Version 8.7"
 
 .SH NAME
 hdparm \- get/set SATA/ATA device parameters
@@ -139,6 +139,29 @@ This operation is also performed internally as part of the
 and
 .I -T
 timings and other flags.
+.TP
+.I --fibmap
+When used, this must be the only flag given.
+It requires a file path as a parameter, and will print
+out a list of the device extents (sector ranges) occupied by that file
+on disk.  Sector numbers are given as absolute LBA numbers,
+referenced from sector 0 of the physical device
+(*not* the partition or filesystem).
+This information can then be used for a variety of purposes,
+including determining appropriate sectors to deliberately corrupt
+during fault-injection testing procedures.
+.TP
+.I --fibmap-sector
+When used, this must be the only flag given.
+It requires a file path followed by a sector number as parameters.
+This sector number is given relative to the start of the file itself,
+not the device.  hdparm will scan the device extents occupied by the file,
+and print out the absolute LBA number of the requested sector of the file.
+This LBA number is referenced from sector 0 of the physical device
+(not the partition or filesystem).
+This LBA value can then be used for a variety of purposes,
+including determining an appropriate sector to deliberately corrupt
+during fault-injection testing procedures.
 .TP
 .I -F
 Flush the on-drive write cache buffer (older drives may not implement this).
@@ -375,9 +398,10 @@ or
 flags.
 .TP
 .I -Q
-Set tagged queue depth (1 or greater), or turn tagged queuing off (0).
-This only works with the newer 2.5.xx (or later) kernels, and only with
-the few drives that currently support it.
+Get or set the device's command queue_depth, if supported by the hardware.
+This only works with 2.6.xx (or later) kernels, and only with
+device and driver combinations which support changing the queue_depth.
+For SATA disks, this is the Native Command Queuing (NCQ) queue depth.
 .TP
 .I -r
 Get/set read-only flag for the device.  When set, Linux disallows write operations on the device.
