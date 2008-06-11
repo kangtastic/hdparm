@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v8.7"
+#define VERSION "v8.8"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -1500,7 +1500,7 @@ open_ok:
 		if (ioctl(fd, BLKROGET, &parm)) {
 			err = errno;
 			perror(" BLKROGET failed");
-		} else if (get_readonly) {
+		} else {
 			printf(" readonly      = %2ld", parm);
 			on_off(parm);
 		}
@@ -1509,7 +1509,7 @@ open_ok:
 		if (ioctl(fd, BLKRAGET, &parm)) {
 			err = errno;
 			perror(" BLKRAGET failed");
-		} else if (get_fsreadahead) {
+		} else {
 			printf(" readahead     = %2ld", parm);
 			on_off(parm);
 		}
@@ -2146,7 +2146,7 @@ int main (int _argc, char **_argv)
 				case              'N': get_set_max_sectors_parms(); break;
 				case     SET_PARM('P',"prefetch",prefetch,0,255);
 				case              'q': quiet = 1; noisy = 0; break;
-				case GET_SET_PARM('Q',"queue-depth",dma_q,1,1024);
+				case GET_SET_PARM('Q',"queue-depth",dma_q,0,1024);
 				case     SET_PARM('s',"powerup-in-standby",powerup_in_standby,0,1);
 				case     SET_PARM('S',"standby-interval",standby,0,255);
 				case GET_SET_PARM('r',"read-only",readonly,0,1);

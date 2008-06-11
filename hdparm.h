@@ -66,3 +66,14 @@ enum {	/* ioctl() numbers */
 	HDIO_UNREGISTER_HWIF	= 0x032a,
 	CDROM__SPEED		= 0x5322,
 };
+
+/* Some systems define BLKGETSIZE64 with a "u64" arg,
+ * but without supplying a typedef for u64.
+ * The only real workaround here is to define it locally,
+ * instead of using the system def from <linux/fs.h>
+ */
+#ifdef BLKGETSIZE64
+#undef BLKGETSIZE64
+#endif
+#define BLKGETSIZE64 _IOR(0x12,114,__u64)
+

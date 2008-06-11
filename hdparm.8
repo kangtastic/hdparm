@@ -1,4 +1,4 @@
-.TH HDPARM 8 "May 2008" "Version 8.7"
+.TH HDPARM 8 "June 2008" "Version 8.8"
 
 .SH NAME
 hdparm \- get/set SATA/ATA device parameters
@@ -632,11 +632,13 @@ Freeze the drive\'s security settings.
 The drive does not accept any security commands until next power-on reset.
 Use this function in combination with --security-unlock to protect drive
 from any attempt to set a new password. Can be used standalone, too.
+No other flags are permitted on the command line with this one.
 .TP
 .I --security-unlock PWD 
 Unlock the drive, using password PWD.
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 The applicable drive password is selected with the --user-master switch.
+No other flags are permitted on the command line with this one.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-set-pass PWD 
@@ -645,12 +647,14 @@ Lock the drive, using password PWD (Set Password)
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 The applicable drive password is selected with the --user-master switch and the
 applicable security mode with the --security-mode switch.
+No other flags are permitted on the command line with this one.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-disable PWD 
 Disable drive locking, using password PWD.
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 The applicable drive password is selected with the --user-master switch.
+No other flags are permitted on the command line with this one.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-erase PWD
@@ -658,6 +662,7 @@ Erase (locked) drive, using password PWD
 .B (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 The applicable drive password is selected with the --user-master switch.
+No other flags are permitted on the command line with this one.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-erase-enhanced PWD
@@ -665,6 +670,7 @@ Enhanced erase (locked) drive, using password PWD
 .B (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 The applicable drive password is selected with the --user-master switch.
+No other flags are permitted on the command line with this one.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --user-master USER

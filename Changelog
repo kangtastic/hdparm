@@ -1,3 +1,8 @@
+hdparm-8.8
+	- fix -r, -a so that they display their values again (duh).
+	- define BLKGETSIZE64 locally to avoid broken system headers that use u64 with it.
+	- update man page to indicate that --security-* flags must be standalone
+	- fix -Q to permit querying queue_depth (was broken in v8.7).
 hdparm-8.7
 	- fixes to permit building against older kernels which lack SG_IO
 	- added build script for empeg systems
