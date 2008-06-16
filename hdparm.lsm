@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	8.8
+Version:	8.9
 Entered-date:	2008-06-11
 Description:	hdparm - get/set hard disk parameters for Linux IDE drives.
+		v8.9 make compatible with /sys/block symlinks
 		v8.8 bug fixes from v8.7, including -r, -a, -Q
 		v8.7 new sysfs support, fibmap, misc fixes
 		v8.6 add partition safeguards to r/w/b sector flags

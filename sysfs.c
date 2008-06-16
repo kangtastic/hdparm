@@ -98,7 +98,7 @@ static int sysfs_find_dev2 (char *path, dev_t dev, int recurse, int verbose)
 	}
 	pathtail = path + strlen(path);
 	while ((entry = readdir(dp)) != NULL) {
-		if (entry->d_type == DT_DIR && entry->d_name[0] != '.') {
+		if ((entry->d_type == DT_DIR || entry->d_type == DT_LNK) && entry->d_name[0] != '.') {
 			unsigned int maj, min;
 			sprintf(pathtail, "/%s", entry->d_name);
 			if (sysfs_read_attr(path, "/dev", "%u:%u", &maj, &min, verbose))

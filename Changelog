@@ -1,3 +1,5 @@
+hdparm-8.9
+	- support /sys/block symlinks (some kernels seem to have those).
 hdparm-8.8
 	- fix -r, -a so that they display their values again (duh).
 	- define BLKGETSIZE64 locally to avoid broken system headers that use u64 with it.
