@@ -16,7 +16,10 @@ int sysfs_set_attr (int fd, const char *attr, const char *fmt, void *val_p, int 
 int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *start_lba, __u64 *nsectors);
 int get_dev_t_geometry (dev_t dev, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *start_lba, __u64 *nsectors);
 int do_fibmap(const char *file_name, __u64 target_sect, __u64 *target_lba);
+int fwdownload(int fd, __u16 *id, const char *fwpath, int final_80h);
+void dco_identify_print (__u16 *dco);
 
+extern const char *BuffType[4];
 
 struct local_hd_big_geometry {
        unsigned char	heads;

@@ -875,8 +875,18 @@ void identify (__u16 *id_supplied)
 		printf("\tdevice size with M = 1000*1000: %11llu MBytes ", (unsigned long long)bbbig);
 		if(bbbig > 1000) printf("(%llu GB)\n", (unsigned long long)(bbbig/1000));
 		else printf("\n");
-
 	}
+
+	/* device cache/buffer size, if reported (obsolete field, but usually valid regardless) */
+	printf("\tcache/buffer size  = ");
+	if (val[20] <= 3 && val[21] && val[21] != 0xffff) {
+		printf("%u KBytes", val[21] / 2);
+		if (val[20])
+			printf(" (type=%s)", BuffType[val[20]]);
+	} else {
+		printf("unknown");
+	}
+	putchar('\n');
 
 	/* hw support of commands (capabilities) */
 	printf("Capabilities:\n");
@@ -1278,4 +1288,88 @@ void print_ascii(__u16 *p, __u8 length) {
 		p++;
 	}
 	printf("\n");
+}
+
+void dco_identify_print (__u16 *dco)
+{
+	__u64 lba;
+
+	printf("DCO Revision: 0x%04x", dco[0]);
+	if (dco[0] == 0 || dco[0] > 2)
+		printf(" -- unknown, treating as 0002");
+	printf("\nThe following features can be selectively disabled via DCO:\n");
+
+	printf("\tTransfer modes:\n\t\t");
+	     if (dco[1] & (1<<2)) printf(" mdma0 mdma1 mdma2");
+	else if (dco[1] & (1<<1)) printf(" mdma0 mdma1");
+	else if (dco[1] & (1<<0)) printf(" mdma0");
+	printf("\n\t\t");
+	if (dco[2] & (1<<6)) {
+		printf(" udma0 udma1 udma2 udma3 udma4 udma5 udma6");
+		if (dco[0] < 2)
+			printf("(?)");
+	}
+	else if (dco[2] & (1<<5)) printf(" udma0 udma1 udma2 udma3 udma4 udma5");
+	else if (dco[2] & (1<<4)) printf(" udma0 udma1 udma2 udma3 udma4");
+	else if (dco[2] & (1<<3)) printf(" udma0 udma1 udma2 udma3");
+	else if (dco[2] & (1<<2)) printf(" udma0 udma1 udma2");
+	else if (dco[2] & (1<<1)) printf(" udma0 udma1");
+	else if (dco[2] & (1<<0)) printf(" udma0");
+	putchar('\n');
+
+	lba = dco[5];
+	lba = (lba << 32) | (dco[4] << 16) | dco[3];
+	printf("\tReal max sectors: %llu\n", lba + 1);
+
+	printf("\tATA command/feature sets:");
+	if (dco[7] & 0x01ff)
+		printf("\n\t\t");
+	if (dco[7] & (1<< 0)) printf(" SMART");
+	if (dco[7] & (1<< 1)) printf(" self_test");
+	if (dco[7] & (1<< 2)) printf(" error_log");
+	if (dco[7] & (1<< 3)) printf(" security");
+	if (dco[7] & (1<< 4)) printf(" PUIS");
+	if (dco[7] & (1<< 5)) printf(" TCQ");
+	if (dco[7] & (1<< 6)) printf(" AAM");
+	if (dco[7] & (1<< 7)) printf(" HPA");
+	if (dco[7] & (1<< 8)) printf(" 48_bit");
+	putchar('\n');
+	if (dco[7] & 0xfe00) {
+			printf("\t\t");
+		if (dco[0] < 2)
+			printf(" (?):");
+		if (dco[7] & (1<< 9)) printf(" streaming");
+		if (dco[7] & (1<<10)) printf(" TLC_Reserved_7[10]");
+		if (dco[7] & (1<<11)) printf(" FUA");
+		if (dco[7] & (1<<12)) printf(" selective_test");
+		if (dco[7] & (1<<13)) printf(" conveyance_test");
+		if (dco[7] & (1<<14)) printf(" write_read_verify");
+		if (dco[7] & (1<<15)) printf(" reserved_7[15]");
+		putchar('\n');
+	}
+	if (dco[21] & 0xf800) {
+			printf("\t\t");
+		if (dco[0] < 2)
+			printf(" (?):");
+		if (dco[21] & (1<<11)) printf(" free_fall");
+		if (dco[21] & (1<<12)) printf(" trusted_computing");
+		if (dco[21] & (1<<13)) printf(" WRITE_UNC_EXT");
+		if (dco[21] & (1<<14)) printf(" NV_cache_power_management");
+		if (dco[21] & (1<<15)) printf(" NV_cache");
+	}
+	putchar('\n');
+
+	if (dco[8] && 0x1f) {
+		printf("\tSATA command/feature sets:");
+		printf("\n\t\t");
+		if (dco[0] < 2)
+			printf(" (?):");
+		else
+		if (dco[8] & (1<<0)) printf(" NCQ");
+		if (dco[8] & (1<<1)) printf(" NZ_buffer_offsets");
+		if (dco[8] & (1<<2)) printf(" interface_power_management");
+		if (dco[8] & (1<<3)) printf(" async_notification");
+		if (dco[8] & (1<<4)) printf(" SSP");
+		putchar('\n');
+	}
 }

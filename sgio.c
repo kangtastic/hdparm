@@ -42,30 +42,34 @@ extern int verbose;
  *	SG_DXFER_TO_DEV, SG_DXFER_FROM_DEV, SG_DXFER_NONE
  */
 
+static inline int needs_lba48 (__u64 lba, unsigned int nsect)
+{
+	const __u64 lba28_limit = (1<<28) - 1;
+
+	if (lba < lba28_limit && (lba + nsect - 1) < lba28_limit)
+		return 1;
+	if (nsect > 0xff)
+		return 1;
+	return 0;
+}
+
 void tf_init (struct ata_tf *tf, __u8 ata_op, __u64 lba, unsigned int nsect)
 {
-	const __u64 lba28_mask = 0x0fffffff;
-
 	memset(tf, 0, sizeof(*tf));
 	tf->command = ata_op;
 	tf->dev     = ATA_USING_LBA;
-	if (lba) {
-		tf->lob.lbal = lba;
-		tf->lob.lbam = lba >>  8;
-		tf->lob.lbah = lba >> 16;
-		if ((lba & ~lba28_mask) == 0) {
-			tf->dev |= (lba >> 24) & 0x0f;
-		} else {
-			tf->hob.lbal = lba >> 24;
-			tf->hob.lbam = lba >> 32;
-			tf->hob.lbah = lba >> 40;
-			tf->is_lba48 = 1;
-		}
-	}
-	if (nsect) {
-		tf->lob.nsect = nsect;
-		if ((lba & ~lba28_mask) != 0)
-			tf->hob.nsect = nsect >> 8;
+	tf->lob.lbal = lba;
+	tf->lob.lbam = lba >>  8;
+	tf->lob.lbah = lba >> 16;
+	tf->lob.nsect = nsect;
+	if (needs_lba48(lba, nsect)) {
+		tf->is_lba48 = 1;
+		tf->hob.nsect = nsect >> 8;
+		tf->hob.lbal = lba >> 24;
+		tf->hob.lbam = lba >> 32;
+		tf->hob.lbah = lba >> 40;
+	} else {
+		tf->dev |= (lba >> 24) & 0x0f;
 	}
 }
 
@@ -114,10 +118,11 @@ static int bad_sense (unsigned char *sb, int len)
 {
 	if (verbose)
 		dump_bytes("SG_IO: bad/missing ATA_16 sense data:", sb, len);
-	return EIO;
+	errno = EBADE;
+	return -1;
 }
 
-int sg16 (int fd, int rw, struct ata_tf *tf,
+int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	void *data, unsigned int data_bytes, unsigned int timeout_secs)
 {
 	unsigned char cdb[SG_ATA_16_LEN];
@@ -126,12 +131,12 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 
 	memset(&cdb, 0, sizeof(cdb));
 	cdb[ 0] = SG_ATA_16;
-	cdb[ 1] = data ? (rw ? SG_ATA_PROTO_PIO_OUT : SG_ATA_PROTO_PIO_IN) : SG_ATA_PROTO_NON_DATA;
-#if 0
-	if (data_bytes && (data_bytes % 512) == 0) {
-		cdb[1] = SG_ATA_PROTO_DMA;
+	if (dma) {
+		//cdb[1] = data ? (rw ? SG_ATA_PROTO_UDMA_OUT : SG_ATA_PROTO_UDMA_IN) : SG_ATA_PROTO_NON_DATA;
+		cdb[1] = data ? SG_ATA_PROTO_DMA : SG_ATA_PROTO_NON_DATA;
+	} else {
+		cdb[1] = data ? (rw ? SG_ATA_PROTO_PIO_OUT : SG_ATA_PROTO_PIO_IN) : SG_ATA_PROTO_NON_DATA;
 	}
-#endif
 	cdb[ 2] = SG_CDB2_CHECK_COND;
 	if (data) {
 		cdb[2] |= SG_CDB2_TLEN_NSECT | SG_CDB2_TLEN_SECTORS;
@@ -180,7 +185,9 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	if (io_hdr.host_status || io_hdr.driver_status != SG_DRIVER_SENSE
 	 || (io_hdr.status && io_hdr.status != SG_CHECK_CONDITION))
 	{
-	  	errno = EIO;
+		if (verbose)
+			fprintf(stderr, "SG_IO: bad response (not CHECK_CONDITION)\n");
+	  	errno = EBADE;
 		return -1;
 	}
 	if (verbose)
@@ -191,8 +198,15 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 		return bad_sense(sb, sizeof(sb));
 
 	desc = sb + 8;
-	if (verbose)
-		fprintf(stderr, "SG_IO: desc[] = {%02x %02x .. }\n", desc[0], desc[1]);
+	if (verbose) {
+		int i, len = desc[1], maxlen = sizeof(sb) - 8 - 2;
+		if (len > maxlen)
+			len = maxlen;
+		fprintf(stderr, "SG_IO: desc[] = {%02x %02x", desc[0], desc[1]);
+		for (i = 0; i < maxlen; ++i)
+			fprintf(stderr, " %02x", desc[2 + i]);
+		fprintf(stderr, "}\n");
+	}
 
 	if (desc[0] != 9 || desc[1] < 12)
 		return bad_sense(sb, sizeof(sb));
@@ -213,12 +227,15 @@ int sg16 (int fd, int rw, struct ata_tf *tf,
 	}
 	if (verbose)
 		fprintf(stderr, "      ATA_16 tf->status=0x%02x tf->error=0x%02x\n", tf->status, tf->error);
-#if 0 //FIXME: we have to check this somewhere !!
+
 	if (tf->status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
+		if (verbose) {
+			fprintf(stderr, "I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x\n",
+				tf->command, tf->status, tf->error);
+		}
 		errno = EIO;
 		return -1;
 	}
-#endif
 	return 0;
 }
 
@@ -251,23 +268,17 @@ int do_drive_cmd (int fd, unsigned char *args)
 		tf.lob.lbah  = 0xc2;
 	}
 
-	rc = sg16(fd, SG_READ, &tf, data, data_bytes, 0);
-	if (rc) {
-		if (rc == -1)
+	rc = sg16(fd, SG_READ, SG_PIO, &tf, data, data_bytes, 0);
+	if (rc == -1) {
+		if (errno == EINVAL || errno == ENODEV)
 			goto use_legacy_ioctl;
-		errno = rc;
-		rc = -1;
-	} else if (tf.status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
-		if (verbose)
-			fprintf(stderr, "I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x\n",
-				tf.command, tf.status, tf.error);
-		errno = EIO;
-		rc = -1;
 	}
 
-	args[0] = tf.status;
-	args[1] = tf.error;
-	args[2] = tf.lob.nsect;
+	if (rc == 0 || errno == EIO) {
+		args[0] = tf.status;
+		args[1] = tf.error;
+		args[2] = tf.lob.nsect;
+	}
 	return rc;
 
 use_legacy_ioctl:
@@ -317,32 +328,26 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 			break;
 	}
 
-	rc = sg16(fd, rw, &tf, data, data_bytes, timeout_secs);
-	if (rc) {
-		if (rc == -1)
+	rc = sg16(fd, rw, SG_PIO, &tf, data, data_bytes, timeout_secs);
+	if (rc == -1) {
+		if (errno == EINVAL || errno == ENODEV)
 			goto use_legacy_ioctl;
-		errno = rc;
-		rc = -1;
-	} else if (tf.status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
-		if (verbose)
-			fprintf(stderr, "I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x\n",
-				tf.command, tf.status, tf.error);
-		errno = EIO;
-		rc = -1;
 	}
 
-	if (r->iflags.b.feat)		r->lob.feat  = tf.error;
-	if (r->iflags.b.lbal)		r->lob.lbal  = tf.lob.lbal;
-	if (r->iflags.b.nsect)		r->lob.nsect = tf.lob.nsect;
-	if (r->iflags.b.lbam)		r->lob.lbam  = tf.lob.lbam;
-	if (r->iflags.b.lbah)		r->lob.lbah  = tf.lob.lbah;
-	if (r->iflags.b.dev)		r->lob.dev   = tf.dev;
-	if (r->iflags.b.command)	r->lob.command = tf.status;
-	if (r->iflags.b.hob_feat)	r->hob.feat  = tf.hob.feat;
-	if (r->iflags.b.hob_lbal)	r->hob.lbal  = tf.hob.lbal;
-	if (r->iflags.b.hob_nsect)	r->hob.nsect = tf.hob.nsect;
-	if (r->iflags.b.hob_lbam)	r->hob.lbam  = tf.hob.lbam;
-	if (r->iflags.b.hob_lbah)	r->hob.lbah  = tf.hob.lbah;
+	if (rc == 0 || errno == EIO) {
+		if (r->iflags.b.feat)		r->lob.feat  = tf.error;
+		if (r->iflags.b.lbal)		r->lob.lbal  = tf.lob.lbal;
+		if (r->iflags.b.nsect)		r->lob.nsect = tf.lob.nsect;
+		if (r->iflags.b.lbam)		r->lob.lbam  = tf.lob.lbam;
+		if (r->iflags.b.lbah)		r->lob.lbah  = tf.lob.lbah;
+		if (r->iflags.b.dev)		r->lob.dev   = tf.dev;
+		if (r->iflags.b.command)	r->lob.command = tf.status;
+		if (r->iflags.b.hob_feat)	r->hob.feat  = tf.hob.feat;
+		if (r->iflags.b.hob_lbal)	r->hob.lbal  = tf.hob.lbal;
+		if (r->iflags.b.hob_nsect)	r->hob.nsect = tf.hob.nsect;
+		if (r->iflags.b.hob_lbam)	r->hob.lbam  = tf.hob.lbam;
+		if (r->iflags.b.hob_lbah)	r->hob.lbah  = tf.hob.lbah;
+	}
 	return rc;
 
 use_legacy_ioctl:
@@ -381,8 +386,6 @@ use_legacy_ioctl:
 void init_hdio_taskfile (struct hdio_taskfile *r, __u8 ata_op, int rw, int force_lba48,
 				__u64 lba, unsigned int nsect, int data_bytes)
 {
-	const __u64 lba28_mask = 0x0fffffff;
-
 	memset(r, 0, sizeof(struct hdio_taskfile) + data_bytes);
 	if (!data_bytes) {
 		r->dphase  = TASKFILE_DPHASE_NONE;
@@ -413,9 +416,7 @@ void init_hdio_taskfile (struct hdio_taskfile *r, __u8 ata_op, int rw, int force
 	r->lob.lbah  = lba >> 16;
 	r->lob.dev   = ATA_USING_LBA;
 
-	if ((lba & ~lba28_mask) == 0 && nsect <= 256 && !force_lba48) {
-		r->lob.dev |= (lba >> 24) & 0x0f;
-	} else {
+	if (needs_lba48(lba, nsect) || force_lba48) {
 		r->hob.nsect = nsect >>  8;
 		r->hob.lbal  = lba   >> 24;
 		r->hob.lbam  = lba   >> 32;
@@ -424,5 +425,7 @@ void init_hdio_taskfile (struct hdio_taskfile *r, __u8 ata_op, int rw, int force
 		r->oflags.b.hob_lbal  = 1;
 		r->oflags.b.hob_lbam  = 1;
 		r->oflags.b.hob_lbah  = 1;
+	} else {
+		r->lob.dev |= (lba >> 24) & 0x0f;
 	}
 }

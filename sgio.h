@@ -14,8 +14,11 @@ enum {
 	ATA_OP_WRITE_LONG_ONCE		= 0x33,
 	ATA_OP_WRITE_PIO_EXT		= 0x34,
 	ATA_OP_WRITE_DMA_EXT		= 0x35,
+	ATA_OP_READ_VERIFY		= 0x40,
 	ATA_OP_READ_VERIFY_ONCE		= 0x41,
+	ATA_OP_READ_VERIFY_EXT		= 0x42,
 	ATA_OP_WRITE_UNC_EXT		= 0x45,	// lba48, no data, uses feat reg
+	ATA_OP_DOWNLOAD_MICROCODE	= 0x92,
 	ATA_OP_STANDBYNOW2		= 0x94,
 	ATA_OP_SETIDLE2			= 0x97,
 	ATA_OP_CHECKPOWERMODE2		= 0x98,
@@ -24,6 +27,7 @@ enum {
 	ATA_OP_READ_NATIVE_MAX		= 0xf8,
 	ATA_OP_READ_NATIVE_MAX_EXT	= 0x27,
 	ATA_OP_SMART			= 0xb0,
+	ATA_OP_DCO			= 0xb1,
 	ATA_OP_READ_DMA			= 0xc8,
 	ATA_OP_WRITE_DMA		= 0xca,
 	ATA_OP_DOORLOCK			= 0xde,
@@ -185,6 +189,9 @@ struct scsi_sg_io_hdr {
 #define SG_READ			0
 #define SG_WRITE		1
 
+#define SG_PIO			0
+#define SG_DMA			1
+
 #define SG_CHECK_CONDITION	0x02
 #define SG_DRIVER_SENSE		0x08
 
@@ -201,7 +208,7 @@ struct scsi_sg_io_hdr {
 
 void tf_init (struct ata_tf *tf, __u8 ata_op, __u64 lba, unsigned int nsect);
 __u64 tf_to_lba (struct ata_tf *tf);
-int sg16 (int fd, int rw, struct ata_tf *tf, void *data, unsigned int data_bytes, unsigned int timeout_secs);
+int sg16 (int fd, int rw, int dma, struct ata_tf *tf, void *data, unsigned int data_bytes, unsigned int timeout_secs);
 int do_drive_cmd (int fd, unsigned char *args);
 int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs);
 int dev_has_sgio (int fd);

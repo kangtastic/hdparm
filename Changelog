@@ -1,3 +1,11 @@
+hdparm-9.0
+	- Update debian directory contents
+	- add --dco-freeze, --dco-identify, --dco-restore flags
+	- fix sgio.c to be more clever around the lba28 boundary
+	- add supposedly obsolete "cache/buffer size" reporting to -I
+	- new --fwdownload flag
+	- fix error reporting from sg16().
+	- dump entire returned sense desc[] in sgio.c with --verbose
 hdparm-8.9
 	- support /sys/block symlinks (some kernels seem to have those).
 hdparm-8.8

@@ -1,7 +1,7 @@
-.TH HDPARM 8 "June 2008" "Version 8.9"
+.TH HDPARM 8 "November 2008" "Version 9.0"
 
 .SH NAME
-hdparm \- get/set SATA/ATA device parameters
+hdparm \- get/set SATA/IDE device parameters
 .SH SYNOPSIS
 .B hdparm
 [ flags ] [device] ..
@@ -9,12 +9,17 @@ hdparm \- get/set SATA/ATA device parameters
 .BI hdparm
 provides a command line interface to various kernel interfaces
 supported by the Linux SATA/PATA/SAS "libata" subsystem
-and the older IDE driver subsystem.
+and the older IDE driver subsystem.  Many newer (2008 and later)
+USB drive enclosures now also support "SAT" (SCSI-ATA Command Translation)
+and therefore may also work with hdparm.  Eg. recent WD "Passport" models
+and recent NexStar-3 enclosures.
 Some options may work correctly only with the latest kernels.
 .SH OPTIONS
 When no flags are given,
-.I -acdgkmur
+.B -acdgkmur
 is assumed.
+For Get/Set options, a query without an optional parameter (e.g. \-d) will query (get)
+the device state, and with a parameter (e.g., \-d0) will set the device state.
 .TP
 .I -a 
 Get/set sector count for filesystem (software) read-ahead.
@@ -49,15 +54,15 @@ on the drive (not all drives support disabling it, but most do).
 Query/enable (E)IDE 32-bit I/O support.  A numeric parameter can be
 used to enable/disable 32-bit I/O support:
 Currently supported values include
-.I 0
+.B 0
 to disable 32-bit I/O support,
-.I 1
+.B 1
 to enable 32-bit data transfers, and
-.I 3
+.B 3
 to enable 32-bit data transfers with a special
-.I sync
+.B sync
 sequence required by many chipsets.  The value
-.I 3
+.B 3
 works with nearly all
 32-bit IDE chipsets, but incurs slightly more overhead.
 Note that "32-bit" refers to data transfers across a PCI or VLB bus to the
@@ -86,9 +91,9 @@ Disable/enable the "using_dma" flag for this drive.  This option now works
 with most combinations of drives and PCI interfaces which support DMA
 and which are known to the kernel IDE driver.
 It is also a good idea to use the appropriate
-.I -X
+.B -X
 option in combination with
-.I -d1
+.B -d1
 to ensure that the drive itself is programmed for the correct DMA mode,
 although most BIOSs should do this for you at boot time.
 Using DMA nearly always gives the best performance,
@@ -97,9 +102,24 @@ But there are at least a few configurations of chipsets and drives
 for which DMA does not make much of a difference, or may even slow
 things down (on really messed up hardware!).  Your mileage may vary.
 .TP
+.I --dco-freeze
+Freeze/lock the current drive configuration, thereby preventing software (or malware)
+from changing any DCO settings until after the next power-on reset.
+.TP
+.I --dco-identify
+Query and dump information regarding the drive configuration settings
+which can be permanently modified by the vendor.
+.TP
+.I --dco-restore
+Reset all drive settings, features, and accessible capacities back to factory defaults.
+This is
+.B EXTREMELY DANGEROUS
+and will very likely cause massive loss of data.
+.B DO NOT USE THIS COMMAND.
+.TP
 .I --direct
 Use the kernel O_DIRECT flag when performing a
-.I -t
+.B -t
 timing test.  This bypasses the page cache, causing the reads
 to go directly from the drive into hdparm's buffers, using so-called
 "raw" I/O.  In many cases, this can produce results that appear
@@ -107,14 +127,14 @@ much faster than the usual page cache method, giving a better indication
 of raw device and driver performance.
 .TP
 .I --drq-hsm-error
-VERY DANGEROUS, DON'T EVEN THINK ABOUT USING IT.
+.B VERY DANGEROUS, DON'T EVEN THINK ABOUT USING IT.
 This flag causes hdparm to issue an IDENTIFY command
 to the kernel, but incorrectly marked as a "non-data" command.
 This results in the drive being left with its DataReQust(DRQ) line
 "stuck" high.  This confuses the kernel drivers, and may crash the system
 immediately with massive data loss.  The option exists to help in testing
 and fortifying the kernel against similar real-world drive malfunctions.
-VERY DANGEROUS, DO NOT USE!!
+.B VERY DANGEROUS, DO NOT USE!!
 .TP
 .I -D
 Enable/disable the on-drive defect management feature,
@@ -122,7 +142,7 @@ whereby the drive firmware tries to automatically manage
 defective sectors by relocating them to "spare" sectors
 reserved by the factory for such.  Control of this feature
 via the
-.I -D
+.B -D
 flag is not supported for most modern drives
 since ATA-4; thus this command may fail.
 .TP
@@ -135,9 +155,9 @@ after the option, usually a number like 2 or 4.
 .I -f
 Sync and flush the buffer cache for the device on exit.
 This operation is also performed internally as part of the
-.I -t
+.B -t
 and
-.I -T
+.B -T
 timings and other flags.
 .TP
 .I --fibmap
@@ -162,6 +182,28 @@ This LBA number is referenced from sector 0 of the physical device
 This LBA value can then be used for a variety of purposes,
 including determining an appropriate sector to deliberately corrupt
 during fault-injection testing procedures.
+.TP
+.I --fwdownload
+When used, this should be the only flag given.
+It requires a file path immediately after the
+flag, indicating where the new drive firmware should be read from.
+The contents of this file will be sent to the drive using the
+(S)ATA
+.B DOWNLOAD MICROCODE
+command, using either transfer protocol 7 (entire file at once),
+or, if the drive supports it, transfer protocol 3 (segmented download).
+This command is 
+.B EXTREMELY DANGEROUS
+and will probably destroy both the drive and all data on it.
+.B DO NOT USE THIS COMMAND.
+.TP
+.I --fwdownload80
+This variant is for use with non-standard loaders in some devices
+which require a 0x80 flag to be set in the final data packet.
+Other than that, it behaves identically to
+.B --fwdownload
+and is equally
+.B EXTREMELY DANGEROUS.
 .TP
 .I -F
 Flush the on-drive write cache buffer (older drives may not implement this).
@@ -193,7 +235,7 @@ refer to
 Request identification info directly from the drive,
 which is displayed in a new expanded format with considerably
 more detail than with the older
-.I -i
+.B -i
 flag.
 .TP
 .I --Istdin
@@ -203,7 +245,7 @@ option,
 which accepts a drive identification block as standard input
 instead of using a /dev/hd* parameter.
 The format of this block must be
-.I exactly
+.B exactly
 the same as that found in the /proc/ide/*/hd*/identify "files",
 or that produced by the
 .B --Istdout
@@ -219,19 +261,19 @@ is used, it must be the *only* parameter given.
 This option dumps the drive's identify data in hex to stdout,
 in a format similar to that from /proc/ide/*/identify, and suitable for
 later use with the
-.I --Istdin
+.B --Istdin
 option.
 .TP
 .I -k
 Get/set the keep_settings_over_reset flag for the drive.
 When this flag is set, the driver will preserve the
-.I -dmu
+.B -dmu
 options over a soft reset, (as done during the error recovery sequence).
 This flag defaults to off,
 to prevent drive reset loops which could be caused by combinations of
-.I -dmu
+.B -dmu
 settings.  The
-.I -k
+.B -k
 flag should therefore only be set after one has achieved confidence in
 correct system operation with a chosen set of configuration settings.
 In practice, all that is typically necessary to test a configuration
@@ -242,7 +284,7 @@ and that no error logs (kernel messages) are generated in the process
 .I -K
 Set the drive\'s keep_features_over_reset flag.  Setting this enables
 the drive to retain the settings for
-.I -APSWXZ
+.B -APSWXZ
 over a soft reset (as done during the error recovery sequence).
 Not all drives support this feature.
 .TP
@@ -255,7 +297,7 @@ will lock the door mechanism of some removable hard drives
 will unlock the door mechanism.  Normally, Linux
 maintains the door locking mechanism automatically, depending on drive usage
 (locked whenever a filesystem is mounted).  But on system shutdown, this can
-be a nuisance if the root partition is on a removeable disk, since the root
+be a nuisance if the root partition is on a removable disk, since the root
 partition is left mounted (read-only) after shutdown.  So, by using this
 command to unlock the door
 .B after
@@ -306,7 +348,7 @@ then hdparm will issue a "flagged" WRITE_UNCORRECTABLE_EXT, which causes the dri
 to merely flag the sector as bad (rather than genuinely corrupt it), and subsequent
 READs of the sector will fail immediately (rather than after several retries).
 Note also that the
-.I --repair-sector
+.B --repair-sector
 flag can be used to restore (any) bad sectors when they are no longer needed,
 including sectors that were genuinely bad (the drive will likely remap those
 to a fresh area on the media).
@@ -325,7 +367,7 @@ but integer space has been incorporated for future expansion, should this change
 Get/set max visible number of sectors, also known as the
 .B Host Protected Area
 setting.  Without a parameter,
-.I -N
+.B -N
 displays the current setting, which is reported as two values: the first
 gives the current max sectors setting, and the second shows
 the native (real) hardware limit for the disk.
@@ -337,22 +379,22 @@ and/or a copy of the originally provided operating system for recovery purposes.
 To change the current max (VERY DANGEROUS, DATA LOSS IS EXTREMELY LIKELY),
 a new value should be provided (in base10) immediately
 following the
-.I -N
+.B -N
 flag.
 This value is specified as a count of sectors, rather than
 the "max sector address" of the drive.
 Drives have the concept of a temporary (volatile) setting which is
 lost on the next hardware reset, as well as a more permanent (non-volatile)
 value which survives resets and power cycles.  By default,
-.I -N
+.B -N
 affects only the temporary (volatile) setting.  To change the permanent
 (non-volatile) value, prepend a leading
-.I p
+.B p
 character immediately before the first digit of the value.
 Drives are supposed to allow only a single permanent
 change per session.  A hardware reset (or power cycle) is required
 before another permanent
-.I -N
+.B -N
 operation can succeed.  Note that any attempt to set this value
 may fail if the disk is being accessed by other software at the same time.
 This is because setting the value requires a pair of back-to-back drive commands,
@@ -388,13 +430,13 @@ as of ATA-4.
 Handle the next flag quietly, suppressing normal output (but not error messages).
 This is useful for reducing screen clutter when running from system startup scripts.
 Not applicable to the
-.I -i
+.B -i
 or
-.I -v
+.B -v
 or
-.I -t
+.B -t
 or
-.I -T
+.B -T
 flags.
 .TP
 .I -Q
@@ -415,7 +457,7 @@ for the specified sector.  This can be used to definitively check whether a give
 .TP
 .I --repair-sector
 This is an alias for the
-.I --write-sector
+.B --write-sector
 flag.  VERY DANGEROUS.
 .TP
 .I -R
@@ -550,29 +592,29 @@ Tristate device for hotswap
 .B (DANGEROUS).
 .TP
 .I -X 
-Set the IDE transfer mode for newer (E)IDE/ATA drives.
+Set the IDE transfer mode for (E)IDE/ATA drives.
 This is typically used in combination with
-.I -d1
+.B -d1
 when enabling DMA to/from a drive on a supported interface chipset, where
-.I -X mdma2
+.B -X mdma2
 is used to select multiword DMA mode2 transfers and
-.I -X sdma1 
+.B -X sdma1 
 is used to select simple mode 1 DMA transfers.
 With systems which support UltraDMA burst timings,
-.I -X udma2
+.B -X udma2
 is used to select UltraDMA mode2 transfers (you\'ll need to prepare
 the chipset for UltraDMA beforehand).
 Apart from that, use of this flag is
-.I seldom necessary
+.B seldom necessary
 since most/all modern IDE drives default to their fastest PIO transfer mode
 at power-on.  Fiddling with this can be both needless and risky.
 On drives which support alternate transfer modes,
-.I -X
+.B -X
 can be used to switch the mode of the drive
-.I only.
+.B only.
 Prior to changing the transfer mode, the IDE interface should be jumpered
 or programmed (see
-.I -p
+.B -p
 flag)
 for the new mode setting to prevent loss and/or corruption of data.
 .I Use this with extreme caution!
@@ -691,6 +733,8 @@ Only useful in combination with --security-set-pass.
         m       maximum security
 
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
+.SH FILES
+/etc/hdparm.conf
 .SH BUGS
 As noted above, the
 .B -m sectcount
@@ -704,7 +748,7 @@ corruption may result.  Backup everything before experimenting!
 Some options (eg. -r for SCSI) may not work with old kernels as 
 necessary ioctl()\'s were not supported.
 .PP
-Although this utility is intended primarily for use with (E)IDE hard disk
+Although this utility is intended primarily for use with SATA/IDE hard disk
 devices, several of the options are also valid (and permitted) for use with 
 SCSI hard disk devices and MFM/RLL hard disks with XT interfaces.
 .PP
@@ -723,8 +767,8 @@ consecutively and issue the two necessary commands that way.
 .SH AUTHOR
 .B hdparm
 has been written by Mark Lord <mlord@pobox.com>, the original primary
-developer and maintainer of the (E)IDE driver for Linux,
-with suggestions from many netfolk.
+developer and maintainer of the (E)IDE driver for Linux, and current contributer
+to the libata subsystem, along with suggestions and patches from many netfolk.
 .PP
 The disable Seagate auto-powersaving code
 is courtesy of Tomi Leppikangas(tomilepp@paju.oulu.fi).

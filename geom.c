@@ -57,7 +57,7 @@ int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects,
 			return err;
 	}
 
-	if (start_lba) {	//FIXME
+	if (start_lba) {
 		/*
 		 * HDIO_GETGEO uses 32-bit fields on 32-bit architectures,
 		 * so it cannot be relied upon for start_lba with very large drives >= 2TB.
