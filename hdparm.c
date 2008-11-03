@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.0"
+#define VERSION "v9.1"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -872,6 +872,29 @@ static int abort_if_not_full_device (int fd, __u64 lba, const char *devname, con
 	exit(EINVAL);
 }
 
+static __u16 *get_dco_identify_data (int fd, int quietly)
+{
+	static __u8 args[4+512];
+	__u16 *dco = (void *)(args + 4);
+	int i;
+	
+	memset(args, 0, sizeof(args));
+	args[0] = ATA_OP_DCO;
+	args[2] = 0xc2;
+	args[3] = 1;
+	if (do_drive_cmd(fd, args)) {
+		if (!quietly)
+			perror(" HDIO_DRIVE_CMD(dco_identify) failed");
+		return NULL;
+	} else {
+		/* byte-swap the little-endian DCO data to match byte-order on host CPU */
+		for (i = 0; i < 0x100; ++i)
+			__le16_to_cpus(&dco[i]);
+		//dump_sectors(dco, 1);
+		return dco;
+	}
+}
+
 static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 {
 	int err = 0;
@@ -1385,23 +1408,9 @@ open_ok:
 		do_set_security(fd);
 	}
 	if (do_dco_identify) {
-		static __u8 args[4+512];
-		__u16 *dco = (void *)(args + 4);
-		int i;
-	
-		memset(args, 0, sizeof(args));
-		args[0] = ATA_OP_DCO;
-		args[2] = 0xc2;
-		args[3] = 1;
-		if (do_drive_cmd(fd, args)) {
-			perror(" HDIO_DRIVE_CMD(dco_identify) failed");
-		} else {
-			/* byte-swap the little-endian IDENTIFY data to match byte-order on host CPU */
-			for (i = 0; i < 0x100; ++i)
-				__le16_to_cpus(&dco[i]);
-			//dump_sectors(dco, 1);
+		__u16 *dco = get_dco_identify_data(fd, 0);
+		if (dco)
 			dco_identify_print(dco);
-		}
 	}
 	if (do_dco_restore) {
 		__u8 args[4] = {ATA_OP_DCO,0,0xc0,0};
@@ -1717,8 +1726,18 @@ open_ok:
 					printf(", HPA is enabled\n");
 				else if (visible == native)
 					printf(", HPA is disabled\n");
-				else
-					printf(", HPA setting seems invalid\n");
+				else {
+					__u16 *dco = get_dco_identify_data(fd, 1);
+					if (dco) {
+						__u64 dco_max = dco[5];
+						dco_max = ((((__u64)dco[5]) << 32) | (dco[4] << 16) | dco[3]) + 1;
+						printf("(%llu?)", dco_max);
+					}
+					printf(", HPA setting seems invalid");
+					if ((native & 0xffffff000000ull) == 0)
+						printf(" (buggy kernel device driver?)");
+					putchar('\n');
+				}
 			}
 		}
 	}

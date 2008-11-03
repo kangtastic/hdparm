@@ -1,4 +1,4 @@
-.TH HDPARM 8 "November 2008" "Version 9.0"
+.TH HDPARM 8 "November 2008" "Version 9.1"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -103,15 +103,34 @@ for which DMA does not make much of a difference, or may even slow
 things down (on really messed up hardware!).  Your mileage may vary.
 .TP
 .I --dco-freeze
-Freeze/lock the current drive configuration, thereby preventing software (or malware)
+DCO stands for Drive Configuration Overlay, a way for vendors to selectively
+disable certain features of a drive.  The 
+.B --dco-freeze
+flag will freeze/lock the current drive configuration,
+thereby preventing software (or malware)
 from changing any DCO settings until after the next power-on reset.
 .TP
 .I --dco-identify
-Query and dump information regarding the drive configuration settings
-which can be permanently modified by the vendor.
+Query and dump information regarding drive configuration settings
+which can be disabled by the vendor or OEM installer.
+These settings show capabilities of the drive which might be disabled
+by the vendor for "enhanced compatibility".
+When disabled, they are otherwise hidden and will not show in the
+.B -I
+identify output.  For example, system vendors sometimes disable 48_bit
+addressing on large drives, for compatibility (and loss of capacity)
+with a specific BIOS.  In such cases,
+.B --dco-identify
+will show that the drive is 48_bit capable, but
+.B -I
+will not show it, and nor will the drive accept 48_bit commands.
 .TP
 .I --dco-restore
-Reset all drive settings, features, and accessible capacities back to factory defaults.
+Reset all drive settings, features, and accessible capacities back to factory defaults
+and full capabilities.  This command will fail if DCO is frozen/locked,
+or if a
+.B -Np
+maximum size restriction has also been set.
 This is
 .B EXTREMELY DANGEROUS
 and will very likely cause massive loss of data.
@@ -400,6 +419,11 @@ may fail if the disk is being accessed by other software at the same time.
 This is because setting the value requires a pair of back-to-back drive commands,
 but there is no way to prevent some other command from being inserted between
 them by the kernel.  So if it fails initially, just try again.
+Kernel support for
+.B -N
+is buggy for many adapter types across many kernel versions,
+in that an incorrect (too small) max size value is sometimes reported.
+As of the 2.6.27 kernel, this does finally seem to be working on most hardware.
 .TP
 .I -n
 Get or set the "ignore write errors" flag in the driver.

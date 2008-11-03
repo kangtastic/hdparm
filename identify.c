@@ -1300,10 +1300,12 @@ void dco_identify_print (__u16 *dco)
 	printf("\nThe following features can be selectively disabled via DCO:\n");
 
 	printf("\tTransfer modes:\n\t\t");
-	     if (dco[1] & (1<<2)) printf(" mdma0 mdma1 mdma2");
-	else if (dco[1] & (1<<1)) printf(" mdma0 mdma1");
-	else if (dco[1] & (1<<0)) printf(" mdma0");
-	printf("\n\t\t");
+	if (dco[1] & 0x0007) {
+		     if (dco[1] & (1<<2)) printf(" mdma0 mdma1 mdma2");
+		else if (dco[1] & (1<<1)) printf(" mdma0 mdma1");
+		else if (dco[1] & (1<<0)) printf(" mdma0");
+		printf("\n\t\t");
+	}
 	if (dco[2] & (1<<6)) {
 		printf(" udma0 udma1 udma2 udma3 udma4 udma5 udma6");
 		if (dco[0] < 2)
@@ -1317,25 +1319,24 @@ void dco_identify_print (__u16 *dco)
 	else if (dco[2] & (1<<0)) printf(" udma0");
 	putchar('\n');
 
-	lba = dco[5];
-	lba = (lba << 32) | (dco[4] << 16) | dco[3];
-	printf("\tReal max sectors: %llu\n", lba + 1);
+	lba = ((((__u64)dco[5]) << 32) | (dco[4] << 16) | dco[3]) + 1;
+	printf("\tReal max sectors: %llu\n", lba);
 
 	printf("\tATA command/feature sets:");
-	if (dco[7] & 0x01ff)
+	if (dco[7] & 0x01ff) {
 		printf("\n\t\t");
-	if (dco[7] & (1<< 0)) printf(" SMART");
-	if (dco[7] & (1<< 1)) printf(" self_test");
-	if (dco[7] & (1<< 2)) printf(" error_log");
-	if (dco[7] & (1<< 3)) printf(" security");
-	if (dco[7] & (1<< 4)) printf(" PUIS");
-	if (dco[7] & (1<< 5)) printf(" TCQ");
-	if (dco[7] & (1<< 6)) printf(" AAM");
-	if (dco[7] & (1<< 7)) printf(" HPA");
-	if (dco[7] & (1<< 8)) printf(" 48_bit");
-	putchar('\n');
+		if (dco[7] & (1<< 0)) printf(" SMART");
+		if (dco[7] & (1<< 1)) printf(" self_test");
+		if (dco[7] & (1<< 2)) printf(" error_log");
+		if (dco[7] & (1<< 3)) printf(" security");
+		if (dco[7] & (1<< 4)) printf(" PUIS");
+		if (dco[7] & (1<< 5)) printf(" TCQ");
+		if (dco[7] & (1<< 6)) printf(" AAM");
+		if (dco[7] & (1<< 7)) printf(" HPA");
+		if (dco[7] & (1<< 8)) printf(" 48_bit");
+	}
 	if (dco[7] & 0xfe00) {
-			printf("\t\t");
+		printf("\n\t\t");
 		if (dco[0] < 2)
 			printf(" (?):");
 		if (dco[7] & (1<< 9)) printf(" streaming");
@@ -1345,10 +1346,9 @@ void dco_identify_print (__u16 *dco)
 		if (dco[7] & (1<<13)) printf(" conveyance_test");
 		if (dco[7] & (1<<14)) printf(" write_read_verify");
 		if (dco[7] & (1<<15)) printf(" reserved_7[15]");
-		putchar('\n');
 	}
 	if (dco[21] & 0xf800) {
-			printf("\t\t");
+		printf("\n\t\t");
 		if (dco[0] < 2)
 			printf(" (?):");
 		if (dco[21] & (1<<11)) printf(" free_fall");
@@ -1360,11 +1360,9 @@ void dco_identify_print (__u16 *dco)
 	putchar('\n');
 
 	if (dco[8] && 0x1f) {
-		printf("\tSATA command/feature sets:");
-		printf("\n\t\t");
+		printf("\tSATA command/feature sets:\n\t\t");
 		if (dco[0] < 2)
 			printf(" (?):");
-		else
 		if (dco[8] & (1<<0)) printf(" NCQ");
 		if (dco[8] & (1<<1)) printf(" NZ_buffer_offsets");
 		if (dco[8] & (1<<2)) printf(" interface_power_management");

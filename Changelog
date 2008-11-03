@@ -1,5 +1,8 @@
+hdparm-9.1
+	- tidy up output from --dco-identify, add more info to manpage
+	- add kernel (device driver) bug detection/warning to -N output
 hdparm-9.0
-	- Update debian directory contents
+	- update debian directory contents
 	- add --dco-freeze, --dco-identify, --dco-restore flags
 	- fix sgio.c to be more clever around the lba28 boundary
 	- add supposedly obsolete "cache/buffer size" reporting to -I
