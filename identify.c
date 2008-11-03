@@ -1132,10 +1132,10 @@ void identify (__u16 *id_supplied)
 	}
 	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_EN_2] & WWN_SUP)) 
     {
-		printf("Logical Unit WWN Device Identifier: %x%x%x%x\n", val[108], val[109], val[110], val[111]);
+		printf("Logical Unit WWN Device Identifier: %04x%04x%04x%04x\n", val[108], val[109], val[110], val[111]);
 		printf("\tNAA\t\t: %x\n", (val[108] & 0xf000) >> 12);
-		printf("\tIEEE OUI\t: %x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));
-		printf("\tUnique ID\t: %x%x\n", (val[109] & 0x000f), ((val[110] << 16) | val[111]));
+		printf("\tIEEE OUI\t: %06x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));
+		printf("\tUnique ID\t: %x%08x\n", (val[109] & 0x000f), ((val[110] << 16) | val[111]));
     }
 
 	/* reset result */
