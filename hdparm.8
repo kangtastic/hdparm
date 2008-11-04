@@ -1,4 +1,4 @@
-.TH HDPARM 8 "November 2008" "Version 9.2"
+.TH HDPARM 8 "November 2008" "Version 9.3"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -103,7 +103,7 @@ for which DMA does not make much of a difference, or may even slow
 things down (on really messed up hardware!).  Your mileage may vary.
 .TP
 .I --dco-freeze
-DCO stands for Drive Configuration Overlay, a way for vendors to selectively
+DCO stands for Device Configuration Overlay, a way for vendors to selectively
 disable certain features of a drive.  The 
 .B --dco-freeze
 flag will freeze/lock the current drive configuration,
@@ -256,6 +256,14 @@ which is displayed in a new expanded format with considerably
 more detail than with the older
 .B -i
 flag.
+.TP
+.I --idle-immediate
+Issue an ATA IDLE_IMMEDIATE command, to put the drive into a lower power state.
+Usually the device remains spun-up.
+.TP
+.I --idle-unload
+Issue an ATA IDLE_IMMEDIATE_WITH_UNLOAD command, to unload or park the heads
+and put the drive into a lower power state.  Usually the device remains spun-up.
 .TP
 .I --Istdin
 This is a special variation on the
@@ -512,7 +520,8 @@ the SATA power connector. In these cases, this command may be
 unsupported or may have no effect.
 .TP
 .I -S
-Set the standby (spindown) timeout for the drive.  This value is used
+Put the drive into idle (low-power) mode, and also set the standby
+(spindown) timeout for the drive.  This timeout value is used
 by the drive to determine how long to wait (with no disk activity)
 before turning off the spindle motor to save power.  Under such
 circumstances, the drive may take as long as 30 seconds to respond to

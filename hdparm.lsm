@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	9.2
-Entered-date:	2008-11-03
+Version:	9.3
+Entered-date:	2008-11-04
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.3 new --idle-immediate and --idle-unload commands
 		v9.2 fix WWN (worldwide name) output from -I
 		v9.1 tidy output of --dco-identify, update manpage
 		v9.0 new --dco-* and --fwdownload flags, sg16 fixes, updated debian subdir
@@ -76,7 +77,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		94K hdparm-9.2.tar.gz
+		94K hdparm-9.3.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux, kernels 2.2 through 2.6
 Copying-policy:	BSD License

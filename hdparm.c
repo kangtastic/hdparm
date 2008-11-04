@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.2"
+#define VERSION "v9.3"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -73,6 +73,8 @@ static int set_defects  = 0, get_defects  = 0, defects  = 0;
 static int set_wcache   = 0, get_wcache   = 0, wcache   = 0;
 static int set_doorlock = 0, get_doorlock = 0, doorlock = 0;
 static int set_seagate  = 0, get_seagate  = 0;
+static int get_idleimmediate = 0, set_idleimmediate = 0;
+static int get_idleunload = 0, set_idleunload = 0;
 static int set_standbynow = 0, get_standbynow = 0;
 static int set_sleepnow   = 0, get_sleepnow   = 0;
 static int set_powerup_in_standby = 0, get_powerup_in_standby = 0, powerup_in_standby = 0;
@@ -1051,6 +1053,23 @@ static int do_read_sector (int fd, __u64 lba, const char *devname)
 	return err;
 }
 
+static int do_idleunload (int fd, const char *devname)
+{
+	int err = 0;
+	struct hdio_taskfile r;
+
+	abort_if_not_full_device(fd, 0, devname, NULL);
+	init_hdio_taskfile(&r, ATA_OP_IDLEIMMEDIATE, RW_READ, LBA28_OK, 0x0554e4c, 0, 0);
+	r.oflags.b.feat = 1;
+	r.lob.feat = 0x44;
+
+	if (do_taskfile_cmd(fd, &r, timeout_12secs)) {
+		err = errno;
+		perror("TASKFILE(idle_immediate_unload) failed");
+	}
+	return err;
+}
+
 #if 0
 static int do_read_sectors (int fd, __u64 lba, const char *devname)
 {
@@ -1393,6 +1412,20 @@ open_ok:
 			perror(" HDIO_DRIVE_CMD(standby) failed");
 		}
 	}
+	if (set_idleimmediate) {
+		__u8 args[4] = {ATA_OP_IDLEIMMEDIATE,0,0,0};
+		if (get_idleimmediate)
+			printf(" issuing idle_immediate command\n");
+		if (do_drive_cmd(fd, args)) {
+			err = errno;
+			perror(" HDIO_DRIVE_CMD(idle_immediate) failed");
+		}
+	}
+	if (set_idleunload) {
+		if (get_idleunload)
+			printf(" issuing idle_immediate_unload command\n");
+		err = do_idleunload(fd, devname);
+	}
 	if (set_sleepnow) {
 		__u8 args1[4] = {ATA_OP_SLEEPNOW1,0,0,0};
 		__u8 args2[4] = {ATA_OP_SLEEPNOW2,0,0,0};
@@ -1447,14 +1480,14 @@ open_ok:
 		}
 	}
 	if (set_standby) {
-		__u8 args[4] = {ATA_OP_SETIDLE1,standby,0,0};
+		__u8 args[4] = {ATA_OP_SETIDLE,standby,0,0};
 		if (get_standby) {
 			printf(" setting standby to %u", standby);
 			interpret_standby();
 		}
 		if (do_drive_cmd(fd, args)) {
 			err = errno;
-			perror(" HDIO_DRIVE_CMD(setidle1) failed");
+			perror(" HDIO_DRIVE_CMD(setidle) failed");
 		}
 	}
 	if (set_busstate) {
@@ -1831,6 +1864,8 @@ static void usage_help (int rc)
 	" --fibmap          show device extents (and fragmentation) for a file\n"
 	" --fibmap-sector   show absolute LBA of a specfic sector of a file\n"
 	" --fwdownload      Download firmware file to drive (EXTREMELY DANGEROUS)\n"
+	" --idle-immediate  idle drive immediately\n"
+	" --idle-unload     idle immediately and unload heads\n"
 	" --Istdin          read identify data from stdin as ASCII hex\n"
 	" --Istdout         write identify data to stdout as ASCII hex\n"
 	" --make-bad-sector deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
@@ -1973,7 +2008,8 @@ numeric_parm (char c, const char *name, int *val, int *setparm, int *getparm, in
 #define NUMERIC_PARM(CH,NAME,VAR,MIN,MAX,GETSET) numeric_parm(CH,NAME,&VAR,&set_##VAR,&get_##VAR,MIN,MAX,GETSET)
 #define GET_SET_PARM(CH,NAME,VAR,MIN,MAX) CH:NUMERIC_PARM(CH,NAME,VAR,MIN,MAX,0);break
 #define     SET_PARM(CH,NAME,VAR,MIN,MAX) CH:NUMERIC_PARM(CH,NAME,VAR,MIN,MAX,1);break
-#define     SET_FLAG(CH,VAR)              CH:get_##VAR=noisy;noisy=1;set_##VAR=1;break
+#define     SET_FLAG1(VAR)                get_##VAR=noisy;noisy=1;set_##VAR=1
+#define     SET_FLAG(CH,VAR)              CH:SET_FLAG1(VAR);break
 #define      DO_FLAG(CH,VAR)              CH:VAR=1;noisy=1;break
 #define    INCR_FLAG(CH,VAR)              CH:VAR++;noisy=1;break
 
@@ -2177,6 +2213,10 @@ get_longarg (void)
 		get_filename_parm(&fwpath, name);
 		do_fwdownload = 1;
 		final_80h = 1;
+	} else if (0 == strcasecmp(name, "idle-immediate")) {
+		SET_FLAG1(idleimmediate);
+	} else if (0 == strcasecmp(name, "idle-unload")) {
+		SET_FLAG1(idleunload);
 	} else if (0 == strcasecmp(name, "make-bad-sector")) {
 		make_bad_sector = 1;
 		get_lba_parm(0, 'f', &make_bad_sector_flagged, &make_bad_sector_addr, 0, name);

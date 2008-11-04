@@ -1,4 +1,6 @@
 hdparm-9.2
+	- new --idle-immediate and --idle-unload commands
+hdparm-9.2
 	- fix WWN output from -I
 hdparm-9.1
 	- tidy up output from --dco-identify, add more info to manpage
