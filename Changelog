@@ -1,4 +1,10 @@
-hdparm-9.2
+hdparm-9.4
+	- nuked --fwdownload80 in favour of model-specific workarounds
+	- use mlock() instead of MAP_POPULATE in fwdownload.c
+	- issue SET_STREAMING command as part of -E (for newer CD/DVD drives)
+		courtesy of Thomas Orgis <thomas@orgis.org>
+		and Thomas Fritzsche" <tf@noto.de>.
+hdparm-9.3
 	- new --idle-immediate and --idle-unload commands
 hdparm-9.2
 	- fix WWN output from -I

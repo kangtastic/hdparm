@@ -23,7 +23,7 @@ INSTALL_DATA = $(INSTALL) -m 644
 INSTALL_DIR = $(INSTALL) -m 755 -d
 INSTALL_PROGRAM = $(INSTALL)
 
-OBJS = hdparm.o identify.o sgio.o sysfs.o geom.o fibmap.o fwdownload.o
+OBJS = hdparm.o identify.o sgio.o sysfs.o geom.o fibmap.o fwdownload.o dvdspeed.o
 
 all: hdparm
 
@@ -34,6 +34,8 @@ hdparm: hdparm.h sgio.h $(OBJS)
 hdparm.o:	hdparm.h sgio.h
 
 identify.o:	hdparm.h
+
+dvdspeed.o:     dvdspeed.c
 
 sgio.o: sgio.c sgio.h hdparm.h
 

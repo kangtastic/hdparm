@@ -1,4 +1,4 @@
-.TH HDPARM 8 "November 2008" "Version 9.3"
+.TH HDPARM 8 "December 2008" "Version 9.4"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -166,7 +166,7 @@ flag is not supported for most modern drives
 since ATA-4; thus this command may fail.
 .TP
 .I -E
-Set cdrom speed.  This is NOT necessary for regular operation,
+Set cd/dvd drive speed.  This is NOT necessary for regular operation,
 as the drive will automatically switch speeds on its own.
 But if you want to play with it, just supply a speed number
 after the option, usually a number like 2 or 4.
@@ -215,14 +215,6 @@ This command is
 .B EXTREMELY DANGEROUS
 and will probably destroy both the drive and all data on it.
 .B DO NOT USE THIS COMMAND.
-.TP
-.I --fwdownload80
-This variant is for use with non-standard loaders in some devices
-which require a 0x80 flag to be set in the final data packet.
-Other than that, it behaves identically to
-.B --fwdownload
-and is equally
-.B EXTREMELY DANGEROUS.
 .TP
 .I -F
 Flush the on-drive write cache buffer (older drives may not implement this).

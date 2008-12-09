@@ -22,7 +22,8 @@
 #include "sgio.h"
 
 /* Download a firmware segment to the drive */
-static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset, const void *data, unsigned int bytecount, int final_80h)
+static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset,
+			  const void *data, unsigned int bytecount, int final_80h)
 {
 	int err = 0;
 	struct hdio_taskfile *r;
@@ -69,13 +70,22 @@ static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset, c
 	return err;
 }
 
-int fwdownload (int fd, __u16 *id, const char *fwpath, int final_80h)
+static int is_stec_c5240 (__u16 *id)
 {
-	int fwfd, err = 0;
+	static const char stec_model[] = "STEC MACH8 SSD";
+	static const char stec_fwrev[] = "C5240-8";
+
+	return (0 == memcmp(id + 27, stec_model, strlen(stec_model))
+	 && 0 == memcmp(id + 23, stec_fwrev, strlen(stec_fwrev)));
+}
+
+int fwdownload (int fd, __u16 *id, const char *fwpath)
+{
+	int fwfd, err = 0, final_80h = 0, eof_okay = 0;
 	struct stat st;
 	const char *fw = NULL;
 	const int max_bytes = 0xffff * 512;
-	int xfer_mode = 7, xfer_min = 1, xfer_max = 0xffff;
+	int xfer_mode, xfer_min = 1, xfer_max = 0xffff;
 	ssize_t offset;
 
 	if ((fwfd = open(fwpath, O_RDONLY)) == -1 || fstat(fwfd, &st) == -1) {
@@ -97,7 +107,7 @@ int fwdownload (int fd, __u16 *id, const char *fwpath, int final_80h)
 	}
 
 	if (st.st_size == 0 || st.st_size % 512) {
-	    	fprintf(stderr, "%s: file size (%llu) not evenly divisible by 512\n",
+	    	fprintf(stderr, "%s: file size (%llu) not a multiple of 512\n",
 			fwpath, (unsigned long long) st.st_size);
 		err = EINVAL;
 		goto done;
@@ -105,23 +115,33 @@ int fwdownload (int fd, __u16 *id, const char *fwpath, int final_80h)
 
 	printf("%s: %llu bytes\n", fwpath, (unsigned long long)st.st_size);
 
-	fw = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED|MAP_POPULATE|MAP_LOCKED, fwfd, 0);
+	fw = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fwfd, 0);
 	if (fw == MAP_FAILED) {
 		err = errno;
 		perror(fwpath);
 		goto done;
 	}
+	if (-1 == mlock(fw, st.st_size))
+		perror("mlock()");
 
-	/* Check drive for fwdownload support */
-	if (!((id[83] & 1) && (id[86] & 1))) {
-		fprintf(stderr, "DOWNLOAD_MICROCODE: not supported by device\n");
-		err = ENOTSUP;
-		goto done;
-	}
-
-	/* See if drive supports newer "segmented" fwdownloads */
-	if ((id[119] & 0x10) && (id[120] & 0x10)) {
+	if (is_stec_c5240(id)) {
 		xfer_mode = 3;
+		final_80h = 1;
+		eof_okay  = 1;
+	} else {
+		/* Check drive for fwdownload support */
+		if (!((id[83] & 1) && (id[86] & 1))) {
+			fprintf(stderr, "DOWNLOAD_MICROCODE: not supported by device\n");
+			err = ENOTSUP;
+			goto done;
+		}
+		if (((id[119] & 0x10) && (id[120] & 0x10)) || is_stec_c5240(id))
+			xfer_mode = 3;
+		else
+			xfer_mode = 7;
+	}
+	if (xfer_mode == 3) {
+		/* the newer, segmented transfer mode */
 		xfer_min = id[234];
 		if (xfer_min == 0 || xfer_min == 0xffff)
 			xfer_min = 1;
@@ -146,7 +166,7 @@ int fwdownload (int fd, __u16 *id, const char *fwpath, int final_80h)
 							offset, (unsigned int)st.st_size);
 				err = EIO;
 			}
-		} else if (err == -1) {
+		} else if (err == -1 && !eof_okay) {
 			if (offset >= st.st_size) { // no more data?
 				fprintf(stderr, "Error: drive expects more data than provided\n");
 				err = EIO;
@@ -158,6 +178,7 @@ int fwdownload (int fd, __u16 *id, const char *fwpath, int final_80h)
 	if (!err)
 		printf(" Done.\n");
 done:
+	munlock(fw, st.st_size);
 	close (fwfd);
 	return err;
 }
