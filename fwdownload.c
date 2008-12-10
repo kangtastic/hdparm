@@ -72,8 +72,8 @@ static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset,
 
 static int is_stec_c5240 (__u16 *id)
 {
-	static const char stec_model[] = "STEC MACH8 SSD";
-	static const char stec_fwrev[] = "C5240-8";
+	static const char stec_model[] = "TSCEM CA8HS DS";
+	static const char stec_fwrev[] = "5C42-0";
 
 	return (0 == memcmp(id + 27, stec_model, strlen(stec_model))
 	 && 0 == memcmp(id + 23, stec_fwrev, strlen(stec_fwrev)));

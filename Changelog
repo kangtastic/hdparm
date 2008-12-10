@@ -1,3 +1,6 @@
+hdparm-9.5
+	- byteswap ID strings for fwdownload workarounds
+	- Makefile fixes for $(STRIP) from Wolfram Sang
 hdparm-9.4
 	- nuked --fwdownload80 in favour of model-specific workarounds
 	- use mlock() instead of MAP_POPULATE in fwdownload.c
