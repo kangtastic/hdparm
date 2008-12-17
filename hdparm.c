@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.5"
+#define VERSION "v9.6"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -360,8 +360,8 @@ static __u64 get_lba_capacity (__u16 *idw)
 	if (idw[49] & 0x200) {
 		nsects = (idw[61] << 16) | idw[60];
 		if ((idw[83] & 0xc000) == 0x4000 && (idw[86] & 0x0400)) {
-			nsects = (idw[103] << 16) | idw[102];
-			nsects = (nsects << 32) | ((idw[101] << 16) | idw[100]);
+			nsects = (__u64)idw[103] << 48 | (__u64)idw[102] << 32 |
+			         (__u64)idw[101] << 16 | idw[100];
 		}
 	}
 	return nsects;
