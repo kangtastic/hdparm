@@ -222,26 +222,23 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	  	errno = EBADE;
 		return -1;
 	}
-	if (verbose)
-		fprintf(stderr, "SG_IO: sb[] = {%02x %02x %02x %02x %02x %02x %02x %02x}\n",
-			sb[0], sb[1], sb[2], sb[3], sb[4], sb[5], sb[6], sb[7]); 
 
 	desc = sb + 8;
 	if (sb[0] != 0x72 || sb[7] < 14 || desc[0] != 0x09 || desc[1] < 0x0c) {
 		if (verbose)
-			dump_bytes("SG_IO: bad/missing sense data", sb, sizeof(sb));
+			dump_bytes("SG_IO: bad/missing sense data, sb[]", sb, sizeof(sb));
 		errno = EBADE;
 		return -1;
 	}
 
+	if (verbose)
+		dump_bytes("SG_IO: sb[]", sb, sizeof(sb));
+
 	if (verbose) {
-		int i, len = desc[1], maxlen = sizeof(sb) - 8 - 2;
+		int len = desc[1], maxlen = sizeof(sb) - 8 - 2;
 		if (len > maxlen)
 			len = maxlen;
-		fprintf(stderr, "SG_IO: desc[] = {%02x %02x", desc[0], desc[1]);
-		for (i = 0; i < maxlen; ++i)
-			fprintf(stderr, " %02x", desc[2 + i]);
-		fprintf(stderr, "}\n");
+		dump_bytes("SG_IO: desc[]", desc, len);
 	}
 
 	tf->is_lba48  = desc[ 2] & 1;
@@ -266,8 +263,8 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	}
 
 	if (verbose)
-		fprintf(stderr, "      ATA_%u tf->status=0x%02x tf->error=0x%02x\n",
-				io_hdr.cmd_len, tf->status, tf->error);
+		fprintf(stderr, "      ATA_%u stat=%02x err=%02x nsect=%02x lbal=%02x lbam=%02x lbah=%02x dev=%02x\n",
+				io_hdr.cmd_len, tf->status, tf->error, tf->lob.nsect, tf->lob.lbal, tf->lob.lbam, tf->lob.lbah, tf->dev);
 
 	if (tf->status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
 		if (verbose) {

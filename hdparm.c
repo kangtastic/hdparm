@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.7"
+#define VERSION "v9.8"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -936,7 +936,7 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 			err = errno;
 			perror (" READ_NATIVE_MAX_ADDRESS failed");
 		} else {
-			max = ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
+			max = (((r.lob.dev & 0x0f) << 24) | (r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
 		}
 	}
 	errno = err;
