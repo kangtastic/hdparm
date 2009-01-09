@@ -1,3 +1,6 @@
+hdparm-9.7
+	- FIX RATHER NASTY LBA48/LBA28 CONFUSION BUGS
+	- use ATA_12 by default (helps USB), ATA_16 only when needed for LBA48
 hdparm-9.6
 	- fix -N for 1.5TB drives (from Justin Maggard)
 hdparm-9.5
