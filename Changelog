@@ -1,3 +1,5 @@
+hdparm-9.9
+	- recalculate cyls when kernel returns a truncated value
 hdparm-9.8
 	- fix -N  to correctly use top 4 LBA bits on non-LBA48 drives
 hdparm-9.7

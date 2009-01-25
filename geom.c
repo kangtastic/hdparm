@@ -85,6 +85,16 @@ int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects,
 			perror(" HDIO_GETGEO failed");
 			return err;
 		}
+		/*
+		 * On all (32 and 64 bit) systems, the cyls value is bit-limited.
+		 * So try and correct it using other info we have at hand.
+		 */
+		if (nsectors && cyls && heads && sects) {
+			__u64 chs, hs = *heads * *sects;
+			chs = ((__u64)*cyls) * hs;
+			if (chs < *nsectors)
+				*cyls = *nsectors / hs;
+		}
 	}
 
 	return 0;
