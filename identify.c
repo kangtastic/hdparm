@@ -121,8 +121,6 @@
 #define MEDIA_REMOVABLE		0x0080
 #define DRIVE_NOT_REMOVABLE	0x0040  /* bit obsoleted in ATA 6 */
 #define INCOMPLETE		0x0004
-#define CFA_SUPPORT_VAL1	0x848a	/* 848a=CFA feature set support */
-#define CFA_SUPPORT_VAL2	0x844a	/* 844a=also means CFA feature set support */
 #define DRQ_RESPONSE_TIME	0x0060
 #define DRQ_3MS_VAL		0x0000
 #define DRQ_INTR_VAL		0x0020
@@ -592,6 +590,16 @@ static int print_transport_type(__u16 val[])
 	return transport;
 }
 
+static int is_cfa_dev (__u16 *id)
+{
+	/*
+	 * id[0] == 0x848a means "CFA compliant, not ATA-4 compliant".
+	 * id[0] == 0x044a is also allowed, but ISTR that some HDs use it too.
+	 * Also, bit 0x0004 of id[83] means "supports CFA feature set".
+	 */
+	return id[0] == 0x848a || id[0] == 0x844a || (id[83] & 0xc004) == 0x4004;
+}
+
 /* our main() routine: */
 void identify (__u16 *id_supplied)
 {
@@ -615,14 +623,15 @@ void identify (__u16 *id_supplied)
 	/* check if we recognise the device type */
 	printf("\n");
 
-	if(!(val[GEN_CONFIG] & NOT_ATA)) {
-		dev = ATA_DEV;
-		printf("ATA device, with ");
-	} else if(val[GEN_CONFIG]==CFA_SUPPORT_VAL1 || val[GEN_CONFIG]==CFA_SUPPORT_VAL2) {
+	//if(val[GEN_CONFIG] == 0x848a || val[GEN_CONFIG] == 0x844a) {
+	if (is_cfa_dev(val)) {
 		is_cfa = 1;
 		dev = ATA_DEV;
 		like_std = 4;
 		printf("CompactFlash ATA device\n");
+	} else if(!(val[GEN_CONFIG] & NOT_ATA)) {
+		dev = ATA_DEV;
+		printf("ATA device, with ");
 	} else if(!(val[GEN_CONFIG] & NOT_ATAPI)) {
 		dev = ATAPI_DEV;
 		eqpt = (val[GEN_CONFIG] & EQPT_TYPE) >> SHIFT_EQPT;
@@ -1179,7 +1188,7 @@ void identify (__u16 *id_supplied)
 			for (mode = 1; mode <= max; ++mode) {
 				if (mode == selected)
 					strcat(modes, "*");
-				sprintf(modes + strlen(modes), "mdma%u ", mode + 4);
+				sprintf(modes + strlen(modes), "mdma%u ", mode + 2);
 			}
 		}
 		if (val[164] & 0x8000)
@@ -1217,6 +1226,7 @@ void identify (__u16 *id_supplied)
 			printf("\t   *\tCFA advanced modes: %s\n", modes);
 
 		if(val[CFA_PWR_MODE] & VALID_W160) {
+			putchar('\t');
 			if((val[CFA_PWR_MODE] & PWR_MODE_REQ) == 0)
 				printf("   *");
 			printf("\tCFA Power Level 1 ");

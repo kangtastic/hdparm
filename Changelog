@@ -1,3 +1,6 @@
+hdparm-9.10
+	- try and improve CF card detection
+	- fix display of mwdma modes 3,4 for CF cards
 hdparm-9.9
 	- recalculate cyls when kernel returns a truncated value
 hdparm-9.8
