@@ -1,4 +1,4 @@
-.TH HDPARM 8 "January 2009" "Version 9.10"
+.TH HDPARM 8 "January 2009" "Version 9.11"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -449,6 +449,14 @@ and an unsuccessful outcome may result in
 Set the maximum sector count for the drive\'s internal prefetch mechanism.
 Not all drives support this feature, and it was dropped from the offical spec
 as of ATA-4.
+.TP
+.I --prefer-ata12
+When using the SAT (SCSI ATA Translation) protocol, hdparm normally prefers
+to use the 16-byte command format whenever possible.
+But some USB drive enclosures don't work correctly with 16-byte commands.
+This flag can be used to force use of the smaller 12-byte command format
+with such drives.  hdparm will still revert to 16-byte commands for things
+that cannot be done with the 12-byte format (eg. sector accesses beyond 28-bits).
 .TP
 .I -q
 Handle the next flag quietly, suppressing normal output (but not error messages).

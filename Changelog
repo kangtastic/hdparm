@@ -1,3 +1,6 @@
+hdparm-9.11
+	- switch back to ATA_16 by default: required by libata for ATAPI devices
+	- add --prefer-ata12 to force use of ATA_12 when needed (some USB enclosures)
 hdparm-9.10
 	- try and improve CF card detection
 	- fix display of mwdma modes 3,4 for CF cards

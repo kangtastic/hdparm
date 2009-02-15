@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.10"
+#define VERSION "v9.11"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -49,6 +49,7 @@ extern const char *minor_str[];
 
 char *progname;
 int verbose = 0;
+int prefer_ata12 = 0;
 static int do_defaults = 0, do_flush = 0, do_ctimings, do_timings = 0;
 static int do_identity = 0, get_geom = 0, noisy = 1, quiet = 0;
 static int do_flush_wcache = 0;
@@ -1875,6 +1876,7 @@ static void usage_help (int rc)
 	" --Istdin          read identify data from stdin as ASCII hex\n"
 	" --Istdout         write identify data to stdout as ASCII hex\n"
 	" --make-bad-sector deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
+	" --prefer-ata12    use 12-byte (instead of 16-byte) SAT commands when possible\n"
 	" --read-sector     read and dump (in hex) a sector directly from the media\n"
 	" --security-help   display help for ATA security commands\n"
 	" --verbose         display extra diagnostics from some commands\n"
@@ -2192,6 +2194,9 @@ get_longarg (void)
 		++argp;
 	if (0 == strcasecmp(name, "verbose")) {
 		verbose = 1;
+		--num_flags_processed;	/* doesn't count as an action flag */
+	} else if (0 == strcasecmp(name, "prefer-ata12")) {
+		prefer_ata12 = 1;
 		--num_flags_processed;	/* doesn't count as an action flag */
 	} else if (0 == strcasecmp(name, "yes-i-know-what-i-am-doing")) {
 		i_know_what_i_am_doing = 1;
