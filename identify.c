@@ -103,6 +103,7 @@
 #define SCT_SUPP		206 /* SMART command transport (SCT) support */
 #define TRANSPORT_MAJOR		222 /* PATA vs. SATA etc.. */
 #define TRANSPORT_MINOR		223 /* minor revision number */
+#define NMRR			217 /* nominal media rotation rate */
 #define INTEGRITY		255 /* integrity word */
 
 /* bit definitions within the words */
@@ -406,8 +407,8 @@ static const char *cap_sata0_str[16] = {
 	"unknown 76[15]",				/* word 76 bit 15 */
 	"unknown 76[14]",				/* word 76 bit 14 */
 	"unknown 76[13]",				/* word 76 bit 13 */
-	"unknown 76[12]",				/* word 76 bit 12 */
-	"unknown 76[11]",				/* word 76 bit 11 */
+	"NCQ priority information",			/* word 76 bit 12 */
+	"Idle-Unload when NCQ is active",		/* word 76 bit 11 */
 	"Phy event counters",				/* word 76 bit 10 */
 	"Host-initiated interface power management",	/* word 76 bit  9 */
 	"Native Command Queueing (NCQ)",		/* word 76 bit  8 */
@@ -416,8 +417,8 @@ static const char *cap_sata0_str[16] = {
 	"unknown 76[5]",				/* word 76 bit  5 */
 	"unknown 76[4]",				/* word 76 bit  4 */
 	"unknown 76[3]",				/* word 76 bit  3 */
-	"SATA-II signaling speed (3.0Gb/s)",		/* word 76 bit  2 */
-	"SATA-I signaling speed (1.5Gb/s)",		/* word 76 bit  1 */
+	"Gen2 signaling speed (3.0Gb/s)",		/* word 76 bit  2 */
+	"Gen1 signaling speed (1.5Gb/s)",		/* word 76 bit  1 */
 	"unknown 76[0]"					/* word 76 bit  0 */
 };
 static const char *feat_sata0_str[16] = {
@@ -561,15 +562,19 @@ static int print_transport_type(__u16 val[])
 			break;
 		case 1:
 			printf("Serial");
-			if (subtype & 0xf) {
-				if (subtype & 1)
+			if (subtype & 0x2f) {
+				if (subtype & (1<<0))
 					printf(", ATA8-AST");
-				if (subtype & 2)
+				if (subtype & (1<<1))
 					printf(", SATA 1.0a");
-				if (subtype & 4)
+				if (subtype & (1<<2))
 					printf(", SATA II Extensions");
-				if (subtype & 8)
+				if (subtype & (1<<3))
 					printf(", SATA Rev 2.5");
+				if (subtype & (1<<4))
+					printf(", SATA Rev 2.6");
+				if (subtype & (1<<5))
+					printf(", SATA Rev 3.0");
 			}
 			break;
 		default:
@@ -603,7 +608,7 @@ static int is_cfa_dev (__u16 *id)
 /* our main() routine: */
 void identify (__u16 *id_supplied)
 {
-
+	unsigned int sector_bytes = 512;
 	__u16 val[256], ii, jj, kk;
 	__u16 like_std = 1, std = 0, min_std = 0xffff;
 	__u16 dev = NO_DEV, eqpt = NO_DEV;
@@ -877,8 +882,25 @@ void identify (__u16 *id_supplied)
 				printf("\tLBA48  user addressable sectors:%11llu\n", (unsigned long long)bbbig);
 			}
 		}
+		if((val[106] & 0xc000) != 0x4000) {
+			printf("\t%-31s %11u bytes\n","Logical/Physical Sector size:", sector_bytes);
+		} else {
+			unsigned int lsize = 256, pfactor = 1;
+			if (val[106] & (1<<13))
+				pfactor = (1 << (val[106] & 0xf));
+			if (val[106] & (1<<12))
+				lsize = (val[118] << 16) | val[117];
+			sector_bytes = 2 * lsize;
+			printf("\t%-31s %11u bytes\n","Logical  Sector size:", sector_bytes);
+			printf("\t%-31s %11u bytes\n","Physical Sector size:", sector_bytes * pfactor);
+			if ((val[209] & 0xc000) == 0x4000) {
+				unsigned int offset = val[209] & 0x1fff;
+				printf("\t%-31s %11u bytes\n", "Logical Sector-0 offset:", offset * lsize);
+			}
+		}
 		if (!bbbig) bbbig = (__u64)(ll>mm ? ll : mm); /* # 512 byte blocks */
 		if (!bbbig) bbbig = bb;
+		bbbig *= (sector_bytes / 512);
 		printf("\tdevice size with M = 1024*1024: %11llu MBytes\n", (unsigned long long)(bbbig>>11));
 		bbbig = (bbbig<<9)/1000000;
 		printf("\tdevice size with M = 1000*1000: %11llu MBytes ", (unsigned long long)bbbig);
@@ -896,6 +918,38 @@ void identify (__u16 *id_supplied)
 		printf("unknown");
 	}
 	putchar('\n');
+
+	/* Form factor */
+	if(val[168] && (val[168] & 0xfff8) == 0) {
+		printf("\tForm Factor: ");
+		switch(val[168]) {
+		case 1:
+			printf("5.25 inch");
+			break;
+		case 2:
+			printf("3.5 inch");
+			break;
+		case 3:
+			printf("2.5 inch");
+			break;
+		case 4:
+			printf("1.8 inch");
+			break;
+		case 5:
+			printf("less than 1.8 inch");
+			break;
+		default:
+			printf("unknown (0x%04x]", val[168]);
+			break;
+		}
+		printf("\n");
+	}
+
+	/* Spinning disk or solid state? */
+	if(val[NMRR] == 1)
+		printf("\tNominal Media Rotation Rate: Solid State Device\n");
+	else if(val[NMRR] > 0x401)
+		printf("\tNominal Media Rotation Rate: %u\n", val[NMRR]);
 
 	/* hw support of commands (capabilities) */
 	printf("Capabilities:\n");
@@ -974,7 +1028,7 @@ void identify (__u16 *id_supplied)
 				printf("%u\n",val[SECTOR_XFER_CUR] & SECTOR_XFER);
 			else	printf("?\n");
 		}
-		if((like_std > 3) && (val[CMDS_SUPP_1] & 0x0008)) {
+		if((like_std > 3) && (val[CMDS_SUPP_1] & 0xc008) == 0x4008) {
 			printf("\tAdvanced power management level: ");
 			if (val[CMDS_EN_1] & 0x0008)
 				printf("%u\n", val[ADV_PWR] & 0xff);

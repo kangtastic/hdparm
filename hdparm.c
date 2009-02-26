@@ -25,7 +25,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.11"
+#define VERSION "v9.12"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -1671,14 +1671,19 @@ open_ok:
 	}
 	if (get_powermode) {
 		__u8 args[4] = {ATA_OP_CHECKPOWERMODE1,0,0,0};
-		const char *state;
+		const char *state = "unknown";
 		if (do_drive_cmd(fd, args)
 		 && (args[0] = ATA_OP_CHECKPOWERMODE2) /* (single =) try again with 0x98 */
 		 && do_drive_cmd(fd, args)) {
 			err = errno;
-			state = "unknown";
 		} else {
-			state = (args[2] == 255) ? "active/idle" : "standby";
+			switch (args[2]) {
+				case 0x00: state = "standby";		break;
+				case 0x40: state = "NVcache_spindown";	break;
+				case 0x41: state = "NVcache_spinup";	break;
+				case 0x80: state = "idle";		break;
+				case 0xff: state = "active/idle";	break;
+			}
 		}
 		printf(" drive state is:  %s\n", state);
 	}
@@ -1733,6 +1738,17 @@ open_ok:
 				printf(" write-caching = not supported\n");
 			}
 		}
+	}
+	if (get_apmmode) {
+		id = get_identify_data(fd, id);
+		printf(" APM_level	= ");
+		if((id[83] & 0xc008) == 0x4008) {
+			if (id[86] & 0x0008)
+				printf("%u\n", id[91] & 0xff);
+			else
+				printf("off\n");
+		} else
+			printf("not supported\n");
 	}
 	if (get_acoustic) {
 		id = get_identify_data(fd, id);
@@ -2307,7 +2323,7 @@ int main (int _argc, char **_argv)
 				case GET_SET_PARM('a',"filesystem-read-ahead",fsreadahead,0,2048);
 				case GET_SET_PARM('A',"look-ahead",lookahead,0,1);
 				case GET_SET_PARM('b',"bus-state",busstate,0,2);
-				case     SET_PARM('B',"power-management-mode",apmmode,1,255);
+				case GET_SET_PARM('B',"power-management-mode",apmmode,0,255);
 				case GET_SET_PARM('c',"32-bit-IO",io32bit,0,3);
 				case     SET_FLAG('C',powermode);
 				case GET_SET_PARM('d',"dma-enable",dma,0,1);

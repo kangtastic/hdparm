@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/cdrom.h>
+#include "hdparm.h"
 /*
  * dvdspeed - use SET STREAMING command to set the speed of DVD-drives
  *

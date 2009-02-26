@@ -1,3 +1,9 @@
+hdparm-9.12
+	- added logical/physical sector size reporting
+	- updated -I output with SATA-2.6 additions
+	- support APM level retrieval with -B flag
+	- updated -C output to match ATA8
+	- added "form factor" and "rotation" display to -I, courtesy of Martin K.Petersen.
 hdparm-9.11
 	- switch back to ATA_16 by default: required by libata for ATAPI devices
 	- add --prefer-ata12 to force use of ATA_12 when needed (some USB enclosures)
