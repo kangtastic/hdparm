@@ -1,4 +1,4 @@
-.TH HDPARM 8 "February 2009" "Version 9.12"
+.TH HDPARM 8 "March 2009" "Version 9.13"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -187,7 +187,8 @@ on disk.  Sector numbers are given as absolute LBA numbers,
 referenced from sector 0 of the physical device
 (*not* the partition or filesystem).
 This information can then be used for a variety of purposes,
-including determining appropriate sectors to deliberately corrupt
+such as examining the degree of fragmenation of larger files, or
+determining appropriate sectors to deliberately corrupt
 during fault-injection testing procedures.
 .TP
 .I --fibmap-sector
@@ -213,6 +214,8 @@ command, using either transfer protocol 7 (entire file at once),
 or, if the drive supports it, transfer protocol 3 (segmented download).
 This command is 
 .B EXTREMELY DANGEROUS
+and
+.B HAS NEVER BEEN PROVEN TO WORK
 and will probably destroy both the drive and all data on it.
 .B DO NOT USE THIS COMMAND.
 .TP
@@ -229,18 +232,18 @@ the beginning of the drive.
 Display terse usage information (help).
 .TP
 .I -i
-Display the identification info that was obtained from the drive at
-.I boot time,
-if available.
-This is a feature of modern IDE drives,
-and may not be supported by older devices.
+Display the identification info which the kernel drivers (IDE, libata)
+have stored from boot/configuration time.  This may differ from the
+current information obtainable directly from the drive itself
+with the
+.B -I
+flag.
 The data returned may or may not be current, depending on activity
 since booting the system.
-However, the current multiple sector mode count is always shown.
 For a more detailed interpretation of the identification info,
 refer to
-.I AT Attachment Interface for Disk Drives
-(ANSI ASC X3T9.2 working draft, revision 4a, April 19/93).
+.I AT Attachment Interface for Disk Drives, 
+ANSI ASC X3T9.2 working draft, revision 4a, April 19/93, and later editions.
 .TP
 .I -I
 Request identification info directly from the drive,

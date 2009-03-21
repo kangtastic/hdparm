@@ -1,3 +1,6 @@
+hdparm-9.13
+	- fix O_DIRECT (--direct) for arch's other than x86
+	- strip leading/trailing spaces from -i model/fwrev/serno strings
 hdparm-9.12
 	- added logical/physical sector size reporting
 	- updated -I output with SATA-2.6 additions

@@ -162,8 +162,8 @@ int fwdownload (int fd, __u16 *id, const char *fwpath)
 			if (offset >= st.st_size) { // transfer complete?
 				err = 0;
 			} else {
-				fprintf(stderr, "Error: drive completed transfer at %d/%u bytes\n",
-							offset, (unsigned int)st.st_size);
+				fprintf(stderr, "Error: drive completed transfer at %llu/%llu bytes\n",
+						(unsigned long long)offset, (unsigned long long)st.st_size);
 				err = EIO;
 			}
 		} else if (err == -1 && !eof_okay) {

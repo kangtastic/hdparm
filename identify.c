@@ -1,4 +1,5 @@
 /* identify.c - by Mark Lord (C) 2000-2007 -- freely distributable */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -10,7 +11,6 @@
 #define __USE_XOPEN
 #endif
 
-#include <unistd.h>
 #include "hdparm.h"
 
 /* device types */
@@ -113,8 +113,6 @@
 #define VALID			0xc000
 #define VALID_VAL		0x4000
 /* many words are considered invalid if they are either all-0 or all-1 */
-#define NOVAL_0			0x0000
-#define NOVAL_1			0xffff
 
 /* word 0: gen_config */
 #define NOT_ATA			0x8000	
@@ -238,7 +236,7 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 #define DEPTH_BITS		0x001f  /* bits used for queue depth */
 
 /* words 80-81: version numbers */
-/* NOVAL_0 or  NOVAL_1 means device does not report version */
+/* 0x0000 or  0xffff means device does not report version */
 
 /* word 81: minor version number */
 #define MINOR_MAX		0x22
@@ -450,7 +448,7 @@ static const char *feat_sata0_str[16] = {
 #define ERASE_BITS		0x00ff
 
 /* word 92: master password revision */
-/* NOVAL_0 or  NOVAL_1 means no support for master password revision */
+/* 0x0000 or  0xffff means no support for master password revision */
 
 /* word 93: hw reset result */
 #define CBLID			0x2000  /* CBLID status */
@@ -507,7 +505,33 @@ static const char *feat_sct_str[16] = {
 #define SIG_VAL			0x00A5  /* signature value */
 
 __u8 mode_loop(__u16 mode_sup, __u16 mode_sel, int cc, __u8 *have_mode);
-void print_ascii(__u16 *p, __u8 length);
+
+static void print_ascii(__u16 *p, unsigned int length) {
+	__u8 ii;
+	char cl;
+
+	/* find first non-space & print it */
+	for (ii = 0; ii< length; ii++) {
+		if(((char) 0x00ff&((*p)>>8)) != ' ') break;
+		if((cl = (char) 0x00ff&(*p)) != ' ') {
+			if(cl != '\0') printf("%c",cl);
+			p++; ii++;
+			break;
+		}
+		p++;
+	}
+	/* print the rest */
+	for (; ii < length; ii++) {
+		__u8 c;
+		/* some older devices have NULLs */
+		c = (*p) >> 8;
+		if (c) putchar(c);
+		c = (*p);
+		if (c) putchar(c);
+		p++;
+	}
+	printf("\n");
+}
 
 // Given a known-supported ATA major revision,
 // return the lowest possible supported ATA revision.
@@ -726,7 +750,7 @@ void identify (__u16 *id_supplied)
 		/* looks like when they up-issue the std, they obsolete one;
 		 * thus, only the newest 4 issues need be supported.
 		 * (That's what "kk" and "min_std" are all about) */
-		if(val[MAJOR] && (val[MAJOR] != NOVAL_1)) {
+		if(val[MAJOR] && (val[MAJOR] != 0xffff)) {
 			printf("\n\tSupported: ");
 			jj = val[MAJOR] << 1;
 			kk = min_ata_std(like_std);
@@ -793,7 +817,7 @@ void identify (__u16 *id_supplied)
 			kk = 1;
 			printf("\n\tUsed: ATAPI for CD-ROMs, SFF-8020i, r2.5");
 		}
-		if(val[CDR_MAJOR] && (val[CDR_MAJOR] != NOVAL_1)) {
+		if(val[CDR_MAJOR] && (val[CDR_MAJOR] != 0xffff)) {
 			kk = 1;
 			printf("\n\tSupported: CD-ROM ATAPI");
 			jj = val[CDR_MAJOR] >> 1;
@@ -910,8 +934,8 @@ void identify (__u16 *id_supplied)
 
 	/* device cache/buffer size, if reported (obsolete field, but usually valid regardless) */
 	printf("\tcache/buffer size  = ");
-	if (val[20] <= 3 && val[21] && val[21] != 0xffff) {
-		printf("%u KBytes", val[21] / 2);
+	if (val[20] <= 3 && val[BUF_SIZE] && val[BUF_SIZE] != 0xffff) {
+		printf("%u KBytes", val[BUF_SIZE] / 2);
 		if (val[20])
 			printf(" (type=%s)", BuffType[val[20]]);
 	} else {
@@ -980,7 +1004,7 @@ void identify (__u16 *id_supplied)
 		printf("\n");
 	}
 	jj = 0;
-	if((min_std == 1) && (val[BUF_SIZE] && (val[BUF_SIZE] != NOVAL_1))) {
+	if((min_std == 1) && (val[BUF_SIZE] && (val[BUF_SIZE] != 0xffff))) {
 		printf("\tBuffer size: %.1fkB",(float)val[BUF_SIZE]/2);
 		jj = 1;
 	}
@@ -1168,7 +1192,7 @@ void identify (__u16 *id_supplied)
 	if((eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
 	{
 		printf("Security: \n");
-		if(val[PSWD_CODE] && (val[PSWD_CODE] != NOVAL_1))
+		if(val[PSWD_CODE] && (val[PSWD_CODE] != 0xffff))
 			printf("\tMaster password revision code = %u\n",val[PSWD_CODE]);
 		jj = val[SECU_STATUS];
 		if(jj) {
@@ -1325,33 +1349,6 @@ __u8 mode_loop(__u16 mode_sup, __u16 mode_sel, int cc, __u8 *have_mode) {
 		mode_sup >>=1;   mode_sel >>=1;
 	}
 	return err_dma;
-}
-
-void print_ascii(__u16 *p, __u8 length) {
-	__u8 ii;
-	char cl;
-	
-	/* find first non-space & print it */
-	for (ii = 0; ii< length; ii++) {
-		if(((char) 0x00ff&((*p)>>8)) != ' ') break;
-		if((cl = (char) 0x00ff&(*p)) != ' ') {
-			if(cl != '\0') printf("%c",cl);
-			p++; ii++;
-			break;
-		}
-		p++;
-	}
-	/* print the rest */
-	for (; ii < length; ii++) {
-		__u8 c;
-		/* some older devices have NULLs */
-		c = (*p) >> 8;
-		if (c) putchar(c);
-		c = (*p);
-		if (c) putchar(c);
-		p++;
-	}
-	printf("\n");
 }
 
 void dco_identify_print (__u16 *dco)

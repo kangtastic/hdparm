@@ -1,9 +1,10 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
 /*          - by Mark Lord (C) 1994-2008 -- freely distributable */
 #include <unistd.h>
-#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#define __USE_GNU	/* for O_DIRECT */
+#include <string.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
@@ -25,7 +26,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.12"
+#define VERSION "v9.13"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -368,14 +369,26 @@ static __u64 get_lba_capacity (__u16 *idw)
 	return nsects;
 }
 
+static char *strip (char *s)
+{
+	char *e;
+
+	while (*s == ' ') ++s;
+	for (e = s; *e && *++e != ' ';);
+	*e = '\0';
+	return s;
+}
+
 static void dump_identity (__u16 *idw)
 {
 	int i;
 	char pmodes[64] = {0,}, dmodes[128]={0,}, umodes[128]={0,};
+	char *model = strip(strndup((char *)&idw[27], 40));
+	char *fwrev = strip(strndup((char *)&idw[23],  8));
+	char *serno = strip(strndup((char *)&idw[10], 20));
 	__u8 tPIO;
 
-	printf("\n Model=%.40s, FwRev=%.8s, SerialNo=%.20s",
-		(char *)&idw[27], (char *)&idw[23], (char *)&idw[10]);
+	printf("\n Model=%.40s, FwRev=%.8s, SerialNo=%.20s", model, fwrev, serno);
 	printf("\n Config={");
 	for (i = 0; i <= 15; i++) {
 		if (idw[0] & (1<<i))
