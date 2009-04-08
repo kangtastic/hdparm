@@ -37,7 +37,7 @@
 #define LENGTH_FW_REV		 4  /*  4 words (8 bytes or characters) */
 #define START_MODEL    		27  /* ASCII model number */
 #define LENGTH_MODEL    	20  /* 20 words (40 bytes or characters) */
-#define SECTOR_XFER_MAX	        47  /* r/w multiple: max sectors xfered */
+#define SECTOR_XFER_MAX		47  /* r/w multiple: max sectors xfered */
 #define DWORD_IO		48  /* can do double-word IO (ATA-1 only) */
 #define CAPAB_0			49  /* capabilities */
 #define CAPAB_1			50
@@ -46,7 +46,7 @@
 #define WHATS_VALID		53  /* what fields are valid */
 #define LCYLS_CUR		54  /* current logical cylinders */
 #define LHEADS_CUR		55  /* current logical heads */
-#define LSECTS_CUR	        56  /* current logical sectors/track */
+#define LSECTS_CUR		56  /* current logical sectors/track */
 #define CAPACITY_LSB		57  /* current capacity in sectors */
 #define CAPACITY_MSB		58
 #define SECTOR_XFER_CUR		59  /* r/w multiple: current sectors xfered */
@@ -201,7 +201,7 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 #define MULTIPLE_SETTING_VALID  0x0100  /* 1=multiple sector setting is valid */
 
 /* word 49: capabilities 0 */
-#define STD_STBY  	  	0x2000  /* 1=standard values supported (ATA);
+#define STD_STBY  		0x2000  /* 1=standard values supported (ATA);
 					   0=vendor specific values */
 #define IORDY_SUP		0x0800  /* 1=support; 0=may be supported */
 #define IORDY_OFF		0x0400  /* 1=may be disabled */
@@ -219,7 +219,7 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 #define MODE			0xff00  /* the mode is in the MSBs */
 
 /* word 53: whats_valid */
-#define OK_W88     	   	0x0004	/* the ultra_dma info is valid */
+#define OK_W88     		0x0004	/* the ultra_dma info is valid */
 #define OK_W64_70		0x0002  /* see above for word descriptions */
 #define OK_W54_58		0x0001  /* current cyl, head, sector, cap. info valid */
 
@@ -289,8 +289,8 @@ const char actual_ver[MINOR_MAX+2] = {
 	3,		/* 0x0006	WARNING:   *exactly*		*/
 	2,		/* 0x0007	WARNING:   to the ATA/		*/
 	3,		/* 0x0008	WARNING:   ATAPI version	*/
-	2,		/* 0x0009	WARNING:   listed in	 	*/
-	3,		/* 0x000a	WARNING:   the 		 	*/
+	2,		/* 0x0009	WARNING:   listed in		*/
+	3,		/* 0x000a	WARNING:   the 			*/
 	3,		/* 0x000b	WARNING:   minor_str 		*/
 	3,		/* 0x000c	WARNING:   array		*/
 	4,		/* 0x000d	WARNING:   above.		*/
@@ -685,7 +685,7 @@ void identify (__u16 *id_supplied)
 	 */
 	if((val[CONFIG]==STBY_NID_VAL) || (val[CONFIG]==STBY_ID_VAL) ||
 	   (val[CONFIG]==PWRD_NID_VAL) || (val[CONFIG]==PWRD_ID_VAL) ) {
-	   	like_std = 5;
+		like_std = 5;
 		if((val[CONFIG]==STBY_NID_VAL) || (val[CONFIG]==STBY_ID_VAL))
 			printf("powers-up in standby; SET FEATURES subcmd spins-up.\n");
 		if(((val[CONFIG]==STBY_NID_VAL) || (val[CONFIG]==PWRD_NID_VAL)) &&
@@ -762,7 +762,7 @@ void identify (__u16 *id_supplied)
 						kk = min_ata_std(like_std);
 					}
 					if (min_std > ii)
-					       	min_std = ii;
+						min_std = ii;
 				}
 				jj <<= 1;
 			}
@@ -812,7 +812,7 @@ void identify (__u16 *id_supplied)
 		} else  printf("\n");
 	} else {
 		/* TBD: do CDROM stuff more thoroughly.  For now... */
-	  	kk = 0;
+		kk = 0;
 		if(val[CDR_MINOR] == 9) {
 			kk = 1;
 			printf("\n\tUsed: ATAPI for CD-ROMs, SFF-8020i, r2.5");
@@ -861,12 +861,12 @@ void identify (__u16 *id_supplied)
 		default : printf("Unknown\n"); break;
 		}
 	} else {
-	  	/* addressing...CHS? See section 6.2 of ATA specs 4 or 5 */
+		/* addressing...CHS? See section 6.2 of ATA specs 4 or 5 */
 		ll = 0; mm = 0; bb = 0; bbbig = 0;
 		if (val[CAPAB_0] & LBA_SUP)
 			ll = (__u32)val[LBA_SECTS_MSB] << 16 | val[LBA_SECTS_LSB];
-	  	if ( (ll > 0x00FBFC10) && (!val[LCYLS])) {
-		  	printf("\tCHS addressing not supported\n");
+		if ( (ll > 0x00FBFC10) && (!val[LCYLS])) {
+			printf("\tCHS addressing not supported\n");
 		} else {
 			jj = val[WHATS_VALID] & OK_W54_58;
 			printf("\tLogical\t\tmax\tcurrent\n");
@@ -1037,7 +1037,7 @@ void identify (__u16 *id_supplied)
 			if(val[CAPAB_0] & STD_STBY) printf("Standard");
 			else 			    printf("Vendor");
 			if((like_std > 3) && ((val[CAPAB_1] & VALID) == VALID_VAL)) {
-			   	if(val[CAPAB_1] & MIN_STANDBY_TIMER) printf(", with ");
+				if(val[CAPAB_1] & MIN_STANDBY_TIMER) printf(", with ");
 				else 				     printf(", no ");
 				printf("device specific minimum\n");
 			} else  printf("\n");
@@ -1185,63 +1185,14 @@ void identify (__u16 *id_supplied)
 		if (val[SCT_SUPP] & 0x1)
 			print_features(val[SCT_SUPP], val[SCT_SUPP] & 0x3f, feat_sct_str);
 	}
-	if((val[RM_STAT] & RM_STAT_BITS) == RM_STAT_SUP) 
-		printf("\tRemovable Media Status Notification feature set supported\n");
 
-	/* security */
-	if((eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
-	{
-		printf("Security: \n");
-		if(val[PSWD_CODE] && (val[PSWD_CODE] != 0xffff))
-			printf("\tMaster password revision code = %u\n",val[PSWD_CODE]);
-		jj = val[SECU_STATUS];
-		if(jj) {
-			for (ii = 0; ii < NUM_SECU_STR; ii++) {
-				if(!(jj & 0x0001)) printf("\tnot\t");
-				else		   printf("\t\t");
-				printf("%s\n",secu_str[ii]);
-				jj >>=1;
-			}
-			if(val[SECU_STATUS] & SECU_ENABLED) {
-				printf("\tSecurity level ");
-				if(val[SECU_STATUS] & SECU_LEVEL) printf("maximum\n");
-				else				  printf("high\n");
-			}
+	if (val[169] && val[169] != 0xffff) {
+		if (val[169] & 1) {
+			const char *behaviour = "in";
+			if (val[69] & (1 << 14))
+				behaviour = "";
+			printf("\t   *\tData Set Management %sdeterminate TRIM supported\n", behaviour);
 		}
-		jj =  val[ERASE_TIME]     & ERASE_BITS;
-		kk =  val[ENH_ERASE_TIME] & ERASE_BITS;
-		if(jj || kk) {
-			printf("\t");
-			if(jj) printf("%umin for SECURITY ERASE UNIT. ", jj==ERASE_BITS ? 508 : jj<<1);
-			if(kk) printf("%umin for ENHANCED SECURITY ERASE UNIT.", kk==ERASE_BITS ? 508 : kk<<1);
-			printf("\n");
-		}
-	}
-	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_EN_2] & WWN_SUP)) 
-    {
-		printf("Logical Unit WWN Device Identifier: %04x%04x%04x%04x\n", val[108], val[109], val[110], val[111]);
-		printf("\tNAA\t\t: %x\n", (val[108] & 0xf000) >> 12);
-		printf("\tIEEE OUI\t: %06x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));
-		printf("\tUnique ID\t: %x%08x\n", (val[109] & 0x000f), ((val[110] << 16) | val[111]));
-    }
-
-	/* reset result */
-	if((val[HWRST_RSLT] & VALID) == VALID_VAL) {
-		printf("HW reset results:\n");
-		if(val[HWRST_RSLT] & CBLID) printf("\tCBLID- above Vih\n");
-		else			    printf("\tCBLID- below Vih\n");
-		if(val[HWRST_RSLT] & RST0)  {
-			printf("\tDevice num = 0");
-			jj = val[HWRST_RSLT];
-		} else {
-			printf("\tDevice num = 1");
-			jj = val[HWRST_RSLT] >> 8;
-		}
-		if((jj & DEV_DET) == JUMPER_VAL) 
-			printf(" determined by the jumper");
-		else if((jj & DEV_DET) == CSEL_VAL)
-			printf(" determined by CSEL");
-		printf("\n");
 	}
 
 	if (is_cfa) {
@@ -1319,6 +1270,64 @@ void identify (__u16 *id_supplied)
 			if (val[162] & 1)
 				printf("\t\tKey Management (CPRM) feature set\n");
 		}
+	}
+
+	if((val[RM_STAT] & RM_STAT_BITS) == RM_STAT_SUP) 
+		printf("\t\tRemovable Media Status Notification feature set supported\n");
+
+	/* security */
+	if((eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
+	{
+		printf("Security: \n");
+		if(val[PSWD_CODE] && (val[PSWD_CODE] != 0xffff))
+			printf("\tMaster password revision code = %u\n",val[PSWD_CODE]);
+		jj = val[SECU_STATUS];
+		if(jj) {
+			for (ii = 0; ii < NUM_SECU_STR; ii++) {
+				if(!(jj & 0x0001)) printf("\tnot\t");
+				else		   printf("\t\t");
+				printf("%s\n",secu_str[ii]);
+				jj >>=1;
+			}
+			if(val[SECU_STATUS] & SECU_ENABLED) {
+				printf("\tSecurity level ");
+				if(val[SECU_STATUS] & SECU_LEVEL) printf("maximum\n");
+				else				  printf("high\n");
+			}
+		}
+		jj =  val[ERASE_TIME]     & ERASE_BITS;
+		kk =  val[ENH_ERASE_TIME] & ERASE_BITS;
+		if(jj || kk) {
+			printf("\t");
+			if(jj) printf("%umin for SECURITY ERASE UNIT. ", jj==ERASE_BITS ? 508 : jj<<1);
+			if(kk) printf("%umin for ENHANCED SECURITY ERASE UNIT.", kk==ERASE_BITS ? 508 : kk<<1);
+			printf("\n");
+		}
+	}
+	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_EN_2] & WWN_SUP)) {
+		printf("Logical Unit WWN Device Identifier: %04x%04x%04x%04x\n", val[108], val[109], val[110], val[111]);
+		printf("\tNAA\t\t: %x\n", (val[108] & 0xf000) >> 12);
+		printf("\tIEEE OUI\t: %06x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));
+		printf("\tUnique ID\t: %x%08x\n", (val[109] & 0x000f), ((val[110] << 16) | val[111]));
+	}
+
+	/* reset result */
+	if((val[HWRST_RSLT] & VALID) == VALID_VAL) {
+		printf("HW reset results:\n");
+		if(val[HWRST_RSLT] & CBLID) printf("\tCBLID- above Vih\n");
+		else			    printf("\tCBLID- below Vih\n");
+		if(val[HWRST_RSLT] & RST0)  {
+			printf("\tDevice num = 0");
+			jj = val[HWRST_RSLT];
+		} else {
+			printf("\tDevice num = 1");
+			jj = val[HWRST_RSLT] >> 8;
+		}
+		if((jj & DEV_DET) == JUMPER_VAL) 
+			printf(" determined by the jumper");
+		else if((jj & DEV_DET) == CSEL_VAL)
+			printf(" determined by CSEL");
+		printf("\n");
 	}
 
 	/* more stuff from std 5 */

@@ -164,7 +164,7 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 		cdb[2] |= rw ? SG_CDB2_TDIR_TO_DEV : SG_CDB2_TDIR_FROM_DEV;
 	}
 
-	if (!prefer_ata12 || tf->is_lba48) {	//FIXME
+	if (!prefer_ata12 || tf->is_lba48) {
 		cdb[ 0] = SG_ATA_16;
 		cdb[ 4] = tf->lob.feat;
 		cdb[ 6] = tf->lob.nsect;

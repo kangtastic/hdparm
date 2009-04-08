@@ -26,7 +26,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.13"
+#define VERSION "v9.14"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -118,7 +118,7 @@ static int	please_destroy_my_drive = 0;
 const int timeout_12secs = 12;
 const int timeout_2hrs   = (2 * 60 * 60);
 
-static int open_flags = O_RDWR|O_NONBLOCK;
+static int open_flags = O_RDONLY|O_NONBLOCK;
 
 // Historically, if there was no HDIO_OBSOLETE_IDENTITY, then
 // then the HDIO_GET_IDENTITY only returned 142 bytes.
@@ -1150,17 +1150,10 @@ void process_dev (char *devname)
 
 	fd = open (devname, open_flags);
 	if (fd < 0) {
-		if (errno == EROFS) {
-			open_flags = (open_flags & ~O_RDWR) | O_RDONLY;
-			fd = open (devname, open_flags);
-			if (fd >= 0)
-				goto open_ok;
-		}
 		err = errno;
 		perror(devname);
 		exit(err);
 	}
-open_ok:
 	if (!quiet)
 		printf("\n%s:\n", devname);
 

@@ -1,3 +1,10 @@
+hdparm-9.14
+	- display DSM determinate/indeterminate TRIM support in -I output
+	- tidy output of CFA features from -I
+	- switch back to O_RDONLY for everything, to keep Debian/udevd happy
+		http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=522091
+	  Note that the kernel returns EFAULT rather than EPERM from SG_IO for
+	  non-root users, and *no* SG_IO functions work for non-root users now.
 hdparm-9.13
 	- fix O_DIRECT (--direct) for arch's other than x86
 	- strip leading/trailing spaces from -i model/fwrev/serno strings
