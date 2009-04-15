@@ -1,3 +1,8 @@
+hdparm-9.15
+	- fix sgio.c LBA48 bugs on big-endian machines
+	- fix -m to work with libata
+	- added development snapshot of --erase-sectors (256) command (do not use)
+	- added development snapshot of --format-track  (256) command (do not use)
 hdparm-9.14
 	- display DSM determinate/indeterminate TRIM support in -I output
 	- tidy output of CFA features from -I

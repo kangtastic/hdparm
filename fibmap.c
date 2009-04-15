@@ -36,8 +36,8 @@ handle_extent(struct file_extent ext, unsigned int sectors_per_block, __u64 star
 	__u64 nsectors = ext.block_count * sectors_per_block;
 
 	if (ext.first_block) {
-		begin_lba = start_lba + (ext.first_block * sectors_per_block);
-		end_lba   = start_lba + (ext.last_block * sectors_per_block) + sectors_per_block - 1;
+		begin_lba = start_lba + ( ext.first_block     * sectors_per_block);
+		end_lba   = start_lba + ((ext.last_block + 1) * sectors_per_block) - 1;
 	} else {
 		begin_lba = end_lba = 0;
 	}
@@ -76,7 +76,6 @@ int do_fibmap(const char *file_name, __u64 target_sect, __u64 *target_lba)
 		perror(file_name);
 		return err;
 	}
-
 	if (!S_ISREG(st.st_mode)) {
 		fprintf(stderr, "%s: not a regular file\n", file_name);
 		close(fd);
@@ -98,7 +97,7 @@ int do_fibmap(const char *file_name, __u64 target_sect, __u64 *target_lba)
 
 	sectors_per_block = st.st_blksize / 512;
 	if (!target_lba) {
-		printf("\n%s: underlying filesystem begins at LBA %llu; assuming 512 byte sectors.\n", file_name, start_lba);
+		printf("\n%s: underlying filesystem: blocksize %lu, begins at LBA %llu; assuming 512 byte sectors\n", file_name, (unsigned long)st.st_blksize, start_lba);
 		printf("%12s %10s %10s %10s\n", "byte_offset", "begin_LBA", "end_LBA", "sectors");
 	}
 

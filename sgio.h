@@ -20,6 +20,7 @@ enum {
 	ATA_OP_READ_VERIFY_ONCE		= 0x41,
 	ATA_OP_READ_VERIFY_EXT		= 0x42,
 	ATA_OP_WRITE_UNC_EXT		= 0x45,	// lba48, no data, uses feat reg
+	ATA_OP_FORMAT_TRACK		= 0x50,
 	ATA_OP_DOWNLOAD_MICROCODE	= 0x92,
 	ATA_OP_STANDBYNOW2		= 0x94,
 	ATA_OP_CHECKPOWERMODE2		= 0x98,
@@ -29,6 +30,7 @@ enum {
 	ATA_OP_READ_NATIVE_MAX_EXT	= 0x27,
 	ATA_OP_SMART			= 0xb0,
 	ATA_OP_DCO			= 0xb1,
+	ATA_OP_ERASE_SECTORS		= 0xc0,
 	ATA_OP_READ_DMA			= 0xc8,
 	ATA_OP_WRITE_DMA		= 0xca,
 	ATA_OP_DOORLOCK			= 0xde,
@@ -38,6 +40,7 @@ enum {
 	ATA_OP_SETIDLE			= 0xe3,
 	ATA_OP_SET_MAX			= 0xf9,
 	ATA_OP_SET_MAX_EXT		= 0x37,
+	ATA_OP_SET_MULTIPLE		= 0xc6,
 	ATA_OP_CHECKPOWERMODE1		= 0xe5,
 	ATA_OP_SLEEPNOW1		= 0xe6,
 	ATA_OP_FLUSHCACHE		= 0xe7,
@@ -110,8 +113,9 @@ enum {
 	TASKFILE_DPHASE_PIO_OUT	= 4,	/* ide: TASKFILE_OUT */
 };
 
-union reg_flags {
-	unsigned all			:16;
+struct reg_flags {
+	union {
+	unsigned lob_all		: 8;
 	struct {
 		unsigned data		: 1;
 		unsigned feat		: 1;
@@ -121,16 +125,21 @@ union reg_flags {
 		unsigned lbah		: 1;
 		unsigned dev		: 1;
 		unsigned command	: 1;
-
-		unsigned hob_data	: 1;
-		unsigned hob_feat	: 1;
-		unsigned hob_lbal	: 1;
-		unsigned hob_nsect	: 1;
-		unsigned hob_lbam	: 1;
-		unsigned hob_lbah	: 1;
-		unsigned hob_dev	: 1;
-		unsigned hob_command	: 1;
-	} b;
+	} lob;
+	};
+	union {
+	unsigned hob_all		: 8;
+	struct {
+		unsigned data		: 1;
+		unsigned feat		: 1;
+		unsigned lbal		: 1;
+		unsigned nsect		: 1;
+		unsigned lbam		: 1;
+		unsigned lbah		: 1;
+		unsigned dev		: 1;
+		unsigned command	: 1;
+	} hob;
+	};
 };
 
 struct taskfile_regs {
@@ -147,8 +156,8 @@ struct taskfile_regs {
 struct hdio_taskfile {
 	struct taskfile_regs	lob;
 	struct taskfile_regs	hob;
-	union reg_flags		oflags;
-	union reg_flags		iflags;
+	struct reg_flags	oflags;
+	struct reg_flags	iflags;
 	int			dphase;
 	int			cmd_req;     /* IDE command_type */
 	unsigned long		obytes;

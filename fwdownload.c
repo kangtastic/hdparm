@@ -43,8 +43,8 @@ static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset,
 	if (final_80h)
 		r->lob.feat |= 0x80;
 
-	r->oflags.b.feat  = 1;
-	r->iflags.b.nsect = 1;
+	r->oflags.lob.feat  = 1;
+	r->iflags.lob.nsect = 1;
 
 	memcpy(r->data, data, bytecount);
 

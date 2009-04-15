@@ -339,20 +339,42 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	 * Reformat and try to issue via SG_IO:
 	 */
 	tf_init(&tf, 0, 0, 0);
-	if (r->oflags.b.feat)	tf.lob.feat  = r->lob.feat;
-	if (r->oflags.b.lbal)	tf.lob.lbal  = r->lob.lbal;
-	if (r->oflags.b.nsect)	tf.lob.nsect = r->lob.nsect;
-	if (r->oflags.b.lbam)	tf.lob.lbam  = r->lob.lbam;
-	if (r->oflags.b.lbah)	tf.lob.lbah  = r->lob.lbah;
-	if (r->oflags.b.dev)	tf.dev       = r->lob.dev;
-	if (r->oflags.b.command) tf.command  = r->lob.command;
-	if ((r->oflags.all >> 8) || (r->iflags.all >> 8)) {
+#if 1 /* debugging */
+	if (verbose) {
+		printf("oflags.lob_all=0x%02x, flags={", r->oflags.lob_all);
+		if (r->oflags.lob.feat)	printf(" feat");
+		if (r->oflags.lob.lbal)	printf(" lbal");
+		if (r->oflags.lob.nsect)printf(" nsect");
+		if (r->oflags.lob.lbam)	printf(" lbam");
+		if (r->oflags.lob.lbah)	printf(" lbah");
+		if (r->oflags.lob.dev)	printf(" dev");
+		if (r->oflags.lob.command) printf(" command");
+		printf(" }\n");
+		printf("oflags.hob_all=0x%02x, flags={", r->oflags.hob_all);
+		if (r->oflags.hob.feat)	printf(" feat");
+		if (r->oflags.hob.lbal)	printf(" lbal");
+		if (r->oflags.hob.nsect)printf(" nsect");
+		if (r->oflags.hob.lbam)	printf(" lbam");
+		if (r->oflags.hob.lbah)	printf(" lbah");
+		printf(" }\n");
+	}
+#endif
+	if (r->oflags.lob.feat)		tf.lob.feat  = r->lob.feat;
+	if (r->oflags.lob.lbal)		tf.lob.lbal  = r->lob.lbal;
+	if (r->oflags.lob.nsect)	tf.lob.nsect = r->lob.nsect;
+	if (r->oflags.lob.lbam)		tf.lob.lbam  = r->lob.lbam;
+	if (r->oflags.lob.lbah)		tf.lob.lbah  = r->lob.lbah;
+	if (r->oflags.lob.dev)		tf.dev       = r->lob.dev;
+	if (r->oflags.lob.command)	tf.command   = r->lob.command;
+	if (r->oflags.hob_all || r->iflags.hob_all) {
 		tf.is_lba48 = 1;
-		if (r->oflags.b.hob_feat)	tf.hob.feat  = r->hob.feat;
-		if (r->oflags.b.hob_lbal)	tf.hob.lbal  = r->hob.lbal;
-		if (r->oflags.b.hob_nsect)	tf.hob.nsect = r->hob.nsect;
-		if (r->oflags.b.hob_lbam)	tf.hob.lbam  = r->hob.lbam;
-		if (r->oflags.b.hob_lbah)	tf.hob.lbah  = r->hob.lbah;
+		if (r->oflags.hob.feat)	tf.hob.feat  = r->hob.feat;
+		if (r->oflags.hob.lbal)	tf.hob.lbal  = r->hob.lbal;
+		if (r->oflags.hob.nsect)tf.hob.nsect = r->hob.nsect;
+		if (r->oflags.hob.lbam)	tf.hob.lbam  = r->hob.lbam;
+		if (r->oflags.hob.lbah)	tf.hob.lbah  = r->hob.lbah;
+		if (verbose)
+			fprintf(stderr, "using LBA48 taskfile\n");
 	}
 	switch (r->cmd_req) {
 		case TASKFILE_CMD_REQ_OUT:
@@ -374,18 +396,18 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	}
 
 	if (rc == 0 || errno == EIO) {
-		if (r->iflags.b.feat)		r->lob.feat  = tf.error;
-		if (r->iflags.b.lbal)		r->lob.lbal  = tf.lob.lbal;
-		if (r->iflags.b.nsect)		r->lob.nsect = tf.lob.nsect;
-		if (r->iflags.b.lbam)		r->lob.lbam  = tf.lob.lbam;
-		if (r->iflags.b.lbah)		r->lob.lbah  = tf.lob.lbah;
-		if (r->iflags.b.dev)		r->lob.dev   = tf.dev;
-		if (r->iflags.b.command)	r->lob.command = tf.status;
-		if (r->iflags.b.hob_feat)	r->hob.feat  = tf.hob.feat;
-		if (r->iflags.b.hob_lbal)	r->hob.lbal  = tf.hob.lbal;
-		if (r->iflags.b.hob_nsect)	r->hob.nsect = tf.hob.nsect;
-		if (r->iflags.b.hob_lbam)	r->hob.lbam  = tf.hob.lbam;
-		if (r->iflags.b.hob_lbah)	r->hob.lbah  = tf.hob.lbah;
+		if (r->iflags.lob.feat)		r->lob.feat  = tf.error;
+		if (r->iflags.lob.lbal)		r->lob.lbal  = tf.lob.lbal;
+		if (r->iflags.lob.nsect)	r->lob.nsect = tf.lob.nsect;
+		if (r->iflags.lob.lbam)		r->lob.lbam  = tf.lob.lbam;
+		if (r->iflags.lob.lbah)		r->lob.lbah  = tf.lob.lbah;
+		if (r->iflags.lob.dev)		r->lob.dev   = tf.dev;
+		if (r->iflags.lob.command)	r->lob.command = tf.status;
+		if (r->iflags.hob.feat)		r->hob.feat  = tf.hob.feat;
+		if (r->iflags.hob.lbal)		r->hob.lbal  = tf.hob.lbal;
+		if (r->iflags.hob.nsect)	r->hob.nsect = tf.hob.nsect;
+		if (r->iflags.hob.lbam)		r->hob.lbam  = tf.hob.lbam;
+		if (r->iflags.hob.lbah)		r->hob.lbah  = tf.hob.lbah;
 	}
 	return rc;
 
@@ -397,21 +419,21 @@ use_legacy_ioctl:
 		fprintf(stderr, "trying legacy HDIO_DRIVE_TASKFILE\n");
 	errno = 0;
 	rc = ioctl(fd, HDIO_DRIVE_TASKFILE, r);
-	if (verbose && ((r->iflags.all >> 8) || (r->iflags.all >> 8))) {
+	if (verbose) {
 		int err = errno;
 		fprintf(stderr, "rc=%d, errno=%d, returned ATA registers: ", rc, err);
-		if (r->iflags.b.feat)		fprintf(stderr, " er=%02x", r->lob.feat);
-		if (r->iflags.b.nsect)		fprintf(stderr, " ns=%02x", r->lob.nsect);
-		if (r->iflags.b.lbal)		fprintf(stderr, " ll=%02x", r->lob.lbal);
-		if (r->iflags.b.lbam)		fprintf(stderr, " lm=%02x", r->lob.lbam);
-		if (r->iflags.b.lbah)		fprintf(stderr, " lh=%02x", r->lob.lbah);
-		if (r->iflags.b.dev)		fprintf(stderr, " dh=%02x", r->lob.dev);
-		if (r->iflags.b.command)	fprintf(stderr, " st=%02x", r->lob.command);
-		if (r->iflags.b.hob_feat)	fprintf(stderr, " err=%02x", r->hob.feat);
-		if (r->iflags.b.hob_nsect)	fprintf(stderr, " err=%02x", r->hob.nsect);
-		if (r->iflags.b.hob_lbal)	fprintf(stderr, " err=%02x", r->hob.lbal);
-		if (r->iflags.b.hob_lbam)	fprintf(stderr, " err=%02x", r->hob.lbam);
-		if (r->iflags.b.hob_lbah)	fprintf(stderr, " err=%02x", r->hob.lbah);
+		if (r->iflags.lob.feat)		fprintf(stderr, " er=%02x", r->lob.feat);
+		if (r->iflags.lob.nsect)	fprintf(stderr, " ns=%02x", r->lob.nsect);
+		if (r->iflags.lob.lbal)		fprintf(stderr, " ll=%02x", r->lob.lbal);
+		if (r->iflags.lob.lbam)		fprintf(stderr, " lm=%02x", r->lob.lbam);
+		if (r->iflags.lob.lbah)		fprintf(stderr, " lh=%02x", r->lob.lbah);
+		if (r->iflags.lob.dev)		fprintf(stderr, " dh=%02x", r->lob.dev);
+		if (r->iflags.lob.command)	fprintf(stderr, " st=%02x", r->lob.command);
+		if (r->iflags.hob.feat)		fprintf(stderr, " err=%02x", r->hob.feat);
+		if (r->iflags.hob.nsect)	fprintf(stderr, " err=%02x", r->hob.nsect);
+		if (r->iflags.hob.lbal)		fprintf(stderr, " err=%02x", r->hob.lbal);
+		if (r->iflags.hob.lbam)		fprintf(stderr, " err=%02x", r->hob.lbam);
+		if (r->iflags.hob.lbah)		fprintf(stderr, " err=%02x", r->hob.lbah);
 		fprintf(stderr, "\n");
 		errno = err;
 	}
@@ -439,31 +461,31 @@ void init_hdio_taskfile (struct hdio_taskfile *r, __u8 ata_op, int rw, int force
 		r->ibytes  = data_bytes;
 	}
 	r->lob.command      = ata_op;
-	r->oflags.b.command = 1;
-	r->oflags.b.dev     = 1;
-	r->oflags.b.lbal    = 1;
-	r->oflags.b.lbam    = 1;
-	r->oflags.b.lbah    = 1;
-	r->oflags.b.nsect   = 1;
+	r->oflags.lob.command = 1;
+	r->oflags.lob.dev     = 1;
+	r->oflags.lob.lbal    = 1;
+	r->oflags.lob.lbam    = 1;
+	r->oflags.lob.lbah    = 1;
+	r->oflags.lob.nsect   = 1;
 
-	r->iflags.b.command = 1;
-	r->iflags.b.feat    = 1;
+	r->iflags.lob.command = 1;
+	r->iflags.lob.feat    = 1;
 
 	r->lob.nsect = nsect;
 	r->lob.lbal  = lba;
 	r->lob.lbam  = lba >>  8;
 	r->lob.lbah  = lba >> 16;
-	r->lob.dev   = ATA_USING_LBA;
+	r->lob.dev   = 0xa0 | ATA_USING_LBA;
 
 	if (needs_lba48(ata_op, lba, nsect) || force_lba48) {
 		r->hob.nsect = nsect >>  8;
 		r->hob.lbal  = lba   >> 24;
 		r->hob.lbam  = lba   >> 32;
 		r->hob.lbah  = lba   >> 40;
-		r->oflags.b.hob_nsect = 1;
-		r->oflags.b.hob_lbal  = 1;
-		r->oflags.b.hob_lbam  = 1;
-		r->oflags.b.hob_lbah  = 1;
+		r->oflags.hob.nsect = 1;
+		r->oflags.hob.lbal  = 1;
+		r->oflags.hob.lbam  = 1;
+		r->oflags.hob.lbah  = 1;
 	} else {
 		r->lob.dev |= (lba >> 24) & 0x0f;
 	}

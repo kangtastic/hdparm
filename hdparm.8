@@ -1,4 +1,4 @@
-.TH HDPARM 8 "April 2009" "Version 9.14"
+.TH HDPARM 8 "April 2009" "Version 9.15"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -723,6 +723,9 @@ No other flags are permitted on the command line with this one.
 Lock the drive, using password PWD (Set Password)
 .B (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
+Use the special password
+.B NULL
+to set an empty password.
 The applicable drive password is selected with the --user-master switch and the
 applicable security mode with the --security-mode switch.
 No other flags are permitted on the command line with this one.
@@ -739,6 +742,9 @@ No other flags are permitted on the command line with this one.
 Erase (locked) drive, using password PWD
 .B (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
+Use the special password
+.B NULL
+to represent an empty password.
 The applicable drive password is selected with the --user-master switch.
 No other flags are permitted on the command line with this one.
 .B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.

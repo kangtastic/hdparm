@@ -26,7 +26,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.14"
+#define VERSION "v9.15"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -101,6 +101,14 @@ static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
 
 static int   make_bad_sector = 0, make_bad_sector_flagged;
 static __u64 make_bad_sector_addr = ~0ULL;
+
+#if 0
+static int   format_track = 0;
+static __u64 format_track_addr = ~0ULL;
+
+static int   erase_sectors = 0;
+static __u64 erase_sectors_addr = ~0ULL;
+#endif
 
 static int   write_sector = 0;
 static __u64 write_sector_addr = ~0ULL;
@@ -690,8 +698,8 @@ do_set_security (int fd)
 
 	/* Not setting any oflags causes a segfault and most
 	   of the times a kernel panic */
-	r->oflags.b.command = 1;
-	r->oflags.b.feat    = 1;
+	r->oflags.lob.command = 1;
+	r->oflags.lob.feat    = 1;
 
 	switch (security_command) {
 		case ATA_OP_SECURITY_ERASE_UNIT:
@@ -920,18 +928,18 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	memset(&r, 0, sizeof(r));
 	r.cmd_req = TASKFILE_CMD_REQ_NODATA;
 	r.dphase  = TASKFILE_DPHASE_NONE;
-	r.oflags.b.dev      = 1;
-	r.oflags.b.command  = 1;
-	r.iflags.b.command  = 1;
-	r.iflags.b.lbal     = 1;
-	r.iflags.b.lbam     = 1;
-	r.iflags.b.lbah     = 1;
+	r.oflags.lob.dev      = 1;
+	r.oflags.lob.command  = 1;
+	r.iflags.lob.command  = 1;
+	r.iflags.lob.lbal     = 1;
+	r.iflags.lob.lbam     = 1;
+	r.iflags.lob.lbah     = 1;
 	r.lob.dev = 0x40;
 
 	if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
-		r.iflags.b.hob_lbal  = 1;
-		r.iflags.b.hob_lbam  = 1;
-		r.iflags.b.hob_lbah  = 1;
+		r.iflags.hob.lbal  = 1;
+		r.iflags.hob.lbam  = 1;
+		r.iflags.hob.lbah  = 1;
 		r.lob.command = ATA_OP_READ_NATIVE_MAX_EXT;
 		if (do_taskfile_cmd(fd, &r, 10)) {
 			err = errno;
@@ -944,7 +952,7 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 				     | ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
 		}
 	} else {
-		r.iflags.b.dev = 1;
+		r.iflags.lob.dev = 1;
 		r.lob.command = ATA_OP_READ_NATIVE_MAX;
 		if (do_taskfile_cmd(fd, &r, timeout_12secs)) {
 			err = errno;
@@ -980,7 +988,7 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname
 				"This operation will probably fail (continuing regardless).\n");
 		}
 		init_hdio_taskfile(r, ATA_OP_WRITE_UNC_EXT, RW_READ, LBA48_FORCE, lba, 1, 0);
-		r->oflags.b.feat = 1;
+		r->oflags.lob.feat = 1;
 		r->lob.feat = make_bad_sector_flagged ? 0xaa : 0x55;
 		flagged     = make_bad_sector_flagged ? "flagged" : "pseudo";
 		printf("Corrupting sector %llu (WRITE_UNC_EXT as %s): ", lba, flagged);
@@ -1003,6 +1011,67 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname
 	free(r);
 	return err;
 }
+
+#if 0
+static int do_format_track (int fd, __u64 lba, const char *devname)
+{
+	int err = 0;
+	struct hdio_taskfile *r;
+
+	abort_if_not_full_device(fd, lba, devname, NULL);
+	r = malloc(sizeof(struct hdio_taskfile) + 512);
+	if (!r) {
+		err = errno;
+		perror("malloc()");
+		return err;
+	}
+	init_hdio_taskfile(r, ATA_OP_FORMAT_TRACK, RW_WRITE, LBA28_OK, lba, 1, 512);
+	r->lob.nsect = 0;
+
+	printf("re-formatting lba %llu: ", lba);
+	fflush(stdout);
+
+	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+		err = errno;
+		perror("FAILED");
+	} else {
+		printf("succeeded\n");
+	}
+
+	// Try and ensure that the system doesn't have our sector in cache:
+	flush_buffer_cache(fd);
+
+	free(r);
+	return err;
+}
+
+static int do_erase_sectors (int fd, __u64 lba, const char *devname)
+{
+	int err = 0;
+	struct hdio_taskfile *r;
+
+	abort_if_not_full_device(fd, lba, devname, NULL);
+	r = malloc(sizeof(struct hdio_taskfile) + 0);
+	if (!r) {
+		err = errno;
+		perror("malloc()");
+		return err;
+	}
+	init_hdio_taskfile(r, ATA_OP_ERASE_SECTORS, RW_READ, LBA28_OK, lba, 256, 0);
+
+	printf("erasing sectors %llu-%llu: ", lba, lba + 255);
+	fflush(stdout);
+
+	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+		err = errno;
+		perror("FAILED");
+	} else {
+		printf("succeeded\n");
+	}
+	free(r);
+	return err;
+}
+#endif
 
 static int do_write_sector (int fd, __u64 lba, const char *devname)
 {
@@ -1074,7 +1143,7 @@ static int do_idleunload (int fd, const char *devname)
 
 	abort_if_not_full_device(fd, 0, devname, NULL);
 	init_hdio_taskfile(&r, ATA_OP_IDLEIMMEDIATE, RW_READ, LBA28_OK, 0x0554e4c, 0, 0);
-	r.oflags.b.feat = 1;
+	r.oflags.lob.feat = 1;
 	r.lob.feat = 0x44;
 
 	if (do_taskfile_cmd(fd, &r, timeout_12secs)) {
@@ -1083,38 +1152,6 @@ static int do_idleunload (int fd, const char *devname)
 	}
 	return err;
 }
-
-#if 0
-static int do_read_sectors (int fd, __u64 lba, const char *devname)
-{
-	int err = 0;
-	__u8 ata_op;
-	struct hdio_taskfile *r;
-
-	abort_if_not_full_device(fd, lba, devname, NULL);
-	r = malloc(sizeof(struct hdio_taskfile) + (4*512));
-	if (!r) {
-		err = errno;
-		perror("malloc()");
-		return err;
-	}
-	ata_op = (lba >> 28) ? ATA_OP_READ_PIO_EXT : ATA_OP_READ_PIO;
-	init_hdio_taskfile(r, ata_op, RW_READ, LBA28_OK, lba, 4, 4*512);
-
-	printf("reading sectors %llu: ", lba);
-	fflush(stdout);
-
-	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
-		err = errno;
-		perror("FAILED");
-	} else {
-		printf("succeeded\n");
-		dump_sectors(r->data, 4);
-	}
-	free(r);
-	return err;
-}
-#endif
 
 static int do_set_max_sectors (int fd, __u16 *id, __u64 max_lba, int permanent)
 {
@@ -1126,7 +1163,7 @@ static int do_set_max_sectors (int fd, __u16 *id, __u64 max_lba, int permanent)
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
 	} else {
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX, RW_READ, LBA28_OK, max_lba, nsect, 0);
-		r.oflags.b.feat = 1;  /* this ATA op requires feat==0 */
+		r.oflags.lob.feat = 1;  /* this ATA op requires feat==0 */
 	}
 
 	/* spec requires that we do this immediately in front.. racey */
@@ -1192,10 +1229,23 @@ void process_dev (char *devname)
 	if (set_mult) {
 		if (get_mult)
 			printf(" setting multcount to %d\n", mult);
-		if (ioctl(fd, HDIO_SET_MULTCOUNT, mult)) {
-			err = errno;
+		if (ioctl(fd, HDIO_SET_MULTCOUNT, mult))
+#if 0
 			perror(" HDIO_SET_MULTCOUNT failed");
+#else /* for libata */
+		{
+			if (errno != ENOTTY) {
+				perror(" HDIO_SET_MULTCOUNT failed");
+			} else {
+				__u8 args[4] = {ATA_OP_SET_MULTIPLE,mult,0,0};
+				confirm_i_know_what_i_am_doing("-m", "Only the old IDE drivers work correctly with -m with kernels up to at least 2.6.29.\nlibata drives may fail and get hung if you set this flag.");
+				if (do_drive_cmd(fd, args)) {
+					err = errno;
+					perror(" HDIO_DRIVE_CMD(set_multi_count) failed");
+				}
+			}
 		}
+#endif
 	}
 	if (set_readonly) {
 		if (get_readonly) {
@@ -1460,7 +1510,7 @@ void process_dev (char *devname)
 	}
 	if (do_dco_restore) {
 		__u8 args[4] = {ATA_OP_DCO,0,0xc0,0};
-		confirm_i_know_what_i_am_doing("--dco-restore", "You are trying to deliberately reset your drive configuration back to the factory defaults.  This may change the apparent capacity and feature set of the drive, making all data on it inaccessible.  You could lose *everything*.");
+		confirm_i_know_what_i_am_doing("--dco-restore", "You are trying to deliberately reset your drive configuration back to the factory defaults.\nThis may change the apparent capacity and feature set of the drive, making all data on it inaccessible.\nYou could lose *everything*.");
 		printf(" issuing DCO restore command\n");
 		if (do_drive_cmd(fd, args)) {
 			err = errno;
@@ -1522,17 +1572,29 @@ void process_dev (char *devname)
 	}
 	if (make_bad_sector) {
 		id = get_identify_data(fd, id);
-		confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media\nThis is a BAD idea, and can easily result in total data loss.");
+		confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
 		err = do_make_bad_sector(fd, id, make_bad_sector_addr, devname);
 	}
+#if 0
+	if (format_track) {
+		confirm_i_know_what_i_am_doing("--format-track", "This flag is still under development and probably does not work correctly yet.\nYou are trying to deliberately destroy your device.\nThis is a BAD idea, and can easily result in total data loss.");
+		confirm_please_destroy_my_drive("--format-track", "This might destroy the drive and/or all data on it.");
+		err = do_format_track(fd, format_track_addr, devname);
+	}
+	if (erase_sectors) {
+		confirm_i_know_what_i_am_doing("--erase-sectors", "This flag is still under development and probably does not work correctly yet.\nYou are trying to deliberately destroy your device.\nThis is a BAD idea, and can easily result in total data loss.");
+		confirm_please_destroy_my_drive("--erase-sectors", "This might destroy the drive and/or all data on it.");
+		err = do_erase_sectors(fd, erase_sectors_addr, devname);
+	}
+#endif
 	if (write_sector) {
-		confirm_i_know_what_i_am_doing("--write-sector", "You are trying to deliberately overwrite a low-level sector on the media\nThis is a BAD idea, and can easily result in total data loss.");
+		confirm_i_know_what_i_am_doing("--write-sector", "You are trying to deliberately overwrite a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
 		err = do_write_sector(fd, write_sector_addr, devname);
 	}
 	if (do_fwdownload) {
 		abort_if_not_full_device (fd, 0, devname, "--fwdownload requires the raw device, not a partition.");
-		confirm_i_know_what_i_am_doing("--fwdownload", "You are trying to deliberately overwrite the drive firmware with the contents of the specified file.  If this fails, your drive could be toast.");
-		confirm_please_destroy_my_drive("--fwdownload", "This might destroy the drive and/or all data on it.");
+		confirm_i_know_what_i_am_doing("--fwdownload", "This flag has not yet been verified to work correctly in the field.\nYou are trying to deliberately overwrite the drive firmware with the contents of the specified file.\nIf this fails, your drive could be toast.");
+		confirm_please_destroy_my_drive("--fwdownload", "This might destroy the drive and well as all of the data on it.");
 		id = get_identify_data(fd, id);
 		err = fwdownload(fd, id, fwpath);
 		if (err)
@@ -1574,10 +1636,23 @@ void process_dev (char *devname)
 	}
 	if (do_defaults || get_mult || do_identity) {
 		multcount = -1;
+		err = 0;
 		if (ioctl(fd, HDIO_GET_MULTCOUNT, &multcount)) {
-			if (get_mult)
+			err = errno;
+			id = get_identify_data(fd, id);
+			if (id) {
+				err = 0;
+				if ((id[59] & 0xff00) == 0x100)
+					multcount = id[59] & 0xff;
+				else
+					multcount = 0;
+			}
+			if (err && get_mult) {
+				errno = err;
 				perror(" HDIO_GET_MULTCOUNT failed");
-		} else if (do_defaults || get_mult) {
+			}
+		}
+		if (!err && (do_defaults || get_mult)) {
 			printf(" multcount     = %2ld", multcount);
 			on_off(multcount);
 		}
@@ -2249,6 +2324,14 @@ get_longarg (void)
 	} else if (0 == strcasecmp(name, "make-bad-sector")) {
 		make_bad_sector = 1;
 		get_lba_parm(0, 'f', &make_bad_sector_flagged, &make_bad_sector_addr, 0, name);
+#if 0
+	} else if (0 == strcasecmp(name, "format-track")) {
+		format_track = 1;
+		get_lba_parm(0, 0, NULL, &format_track_addr, 0, name);
+	} else if (0 == strcasecmp(name, "erase-sectors")) {
+		erase_sectors = 1;
+		get_lba_parm(0, 0, NULL, &erase_sectors_addr, 0, name);
+#endif
 	} else if (0 == strcasecmp(name, "write-sector") || 0 == strcasecmp(name, "repair-sector")) {
 		write_sector = 1;
 		get_lba_parm(0, 0, NULL, &write_sector_addr, 0, name);
