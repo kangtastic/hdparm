@@ -1,4 +1,4 @@
-.TH HDPARM 8 "April 2009" "Version 9.15"
+.TH HDPARM 8 "July 2009" "Version 9.16"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -214,10 +214,18 @@ command, using either transfer protocol 7 (entire file at once),
 or, if the drive supports it, transfer protocol 3 (segmented download).
 This command is 
 .B EXTREMELY DANGEROUS
-and
-.B HAS NEVER BEEN PROVEN TO WORK
-and will probably destroy both the drive and all data on it.
+and could destroy both the drive and all data on it.
 .B DO NOT USE THIS COMMAND.
+The 
+.B --fwdownload-mode3
+,
+.B --fwdownload-mode3-max
+, and
+.B --fwdownload-mode7
+variations on basic
+.B --fwdownload
+allow overriding automatic protocol detection in favour of
+forcing hdparm to use a specific transfer protocol, for testing purposes only.
 .TP
 .I -F
 Flush the on-drive write cache buffer (older drives may not implement this).
@@ -352,7 +360,7 @@ Under rare circumstances, such failures can result in
 .TP
 .I --make-bad-sector
 Deliberately create a bad sector (aka. "media error") on the disk.
-EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
+.B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
 This can be useful for testing of device/RAID error recovery mechanisms.
 The sector number is given as a (base10) parameter after the flag.
 Depending on the device, hdparm will choose one of two possible ATA commands for
@@ -561,6 +569,18 @@ ensure accurate measurements, the buffer cache is flushed during the
 processing of
 .I -t
 using the BLKFLSBUF ioctl.
+.TP
+.I --trim-sectors
+For Solid State Drives (SSDs).
+.B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
+Tells the drive firmware 
+to discard unneeded data sectors, destroying any data that may have
+been present within them.  This makes those sectors available for
+immediate use by the firmware's garbage collection mechanism, to
+improve scheduling for wear-leveling of the flash media.
+This option expects two parameters immediately after the flag:
+an LBA starting address, and a sector count.
+.B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
 .TP
 .I -u
 Get/set interrupt-unmask flag for the drive.  A setting of

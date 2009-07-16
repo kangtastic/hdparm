@@ -1,3 +1,9 @@
+hdparm-9.16
+	- new protocol-specific forms of --fwdownload flags
+	- added --trim-sectors flag
+	- prevent segfaults when get_identify_data() fails
+	- added full word69 features reporting for -I
+	- added BuffSize=unknown to -i
 hdparm-9.15
 	- fix sgio.c LBA48 bugs on big-endian machines
 	- fix -m to work with libata

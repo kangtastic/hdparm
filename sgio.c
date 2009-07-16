@@ -55,9 +55,8 @@ extern int prefer_ata12;
 
 static inline int needs_lba48 (__u8 ata_op, __u64 lba, unsigned int nsect)
 {
-	const __u64 lba28_limit = (1<<28) - 1;
-
 	switch (ata_op) {
+		case ATA_OP_DSM:
 		case ATA_OP_READ_PIO_EXT:
 		case ATA_OP_READ_DMA_EXT:
 		case ATA_OP_WRITE_PIO_EXT:
@@ -67,6 +66,7 @@ static inline int needs_lba48 (__u8 ata_op, __u64 lba, unsigned int nsect)
 		case ATA_OP_READ_NATIVE_MAX_EXT:
 		case ATA_OP_SET_MAX_EXT:
 		case ATA_OP_FLUSHCACHE_EXT:
+		case 0xfd:	/* vertex_trim */
 			return 1;
 	}
 	if (lba >= lba28_limit)
@@ -78,6 +78,22 @@ static inline int needs_lba48 (__u8 ata_op, __u64 lba, unsigned int nsect)
 			return 1;
 	}
 	return 0;
+}
+
+static inline int is_dma (__u8 ata_op)
+{
+	switch (ata_op) {
+		case ATA_OP_DSM:
+		case ATA_OP_READ_DMA_EXT:
+		case ATA_OP_READ_FPDMA:
+		case ATA_OP_WRITE_DMA_EXT:
+		case ATA_OP_WRITE_FPDMA:
+		case ATA_OP_READ_DMA:
+		case ATA_OP_WRITE_DMA:
+			return SG_DMA;
+		default:
+			return SG_PIO;
+	}
 }
 
 void tf_init (struct ata_tf *tf, __u8 ata_op, __u64 lba, unsigned int nsect)
@@ -204,13 +220,18 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	io_hdr.pack_id		= tf_to_lba(tf);
 	io_hdr.timeout		= (timeout_secs ? timeout_secs : 5) * 1000; /* msecs */
 
-	if (verbose)
+	if (verbose) {
 		dump_bytes("outgoing cdb", cdb, sizeof(cdb));
+		if (data)
+			dump_bytes("data", data, 16);
+	}
+
 	if (ioctl(fd, SG_IO, &io_hdr) == -1) {
 		if (verbose)
 			perror("ioctl(fd,SG_IO)");
 		return -1;	/* SG_IO not supported */
 	}
+
 	if (verbose)
 		fprintf(stderr, "SG_IO: ATA_%u status=0x%x, host_status=0x%x, driver_status=0x%x\n",
 			io_hdr.cmd_len, io_hdr.status, io_hdr.host_status, io_hdr.driver_status);
@@ -307,7 +328,7 @@ int do_drive_cmd (int fd, unsigned char *args)
 		tf.lob.lbah  = 0xc2;
 	}
 
-	rc = sg16(fd, SG_READ, SG_PIO, &tf, data, data_bytes, 0);
+	rc = sg16(fd, SG_READ, is_dma(tf.command), &tf, data, data_bytes, 0);
 	if (rc == -1) {
 		if (errno == EINVAL || errno == ENODEV)
 			goto use_legacy_ioctl;
@@ -322,8 +343,10 @@ int do_drive_cmd (int fd, unsigned char *args)
 
 use_legacy_ioctl:
 #endif /* SG_IO */
-	if (verbose)
-		fprintf(stderr, "Trying legacy HDIO_DRIVE_CMD\n");
+	if (verbose) {
+		if (args)
+			fprintf(stderr, "Trying legacy HDIO_DRIVE_CMD\n");
+	}
 	return ioctl(fd, HDIO_DRIVE_CMD, args);
 }
 
@@ -343,8 +366,8 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	if (verbose) {
 		printf("oflags.lob_all=0x%02x, flags={", r->oflags.lob_all);
 		if (r->oflags.lob.feat)	printf(" feat");
-		if (r->oflags.lob.lbal)	printf(" lbal");
 		if (r->oflags.lob.nsect)printf(" nsect");
+		if (r->oflags.lob.lbal)	printf(" lbal");
 		if (r->oflags.lob.lbam)	printf(" lbam");
 		if (r->oflags.lob.lbah)	printf(" lbah");
 		if (r->oflags.lob.dev)	printf(" dev");
@@ -352,8 +375,8 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 		printf(" }\n");
 		printf("oflags.hob_all=0x%02x, flags={", r->oflags.hob_all);
 		if (r->oflags.hob.feat)	printf(" feat");
-		if (r->oflags.hob.lbal)	printf(" lbal");
 		if (r->oflags.hob.nsect)printf(" nsect");
+		if (r->oflags.hob.lbal)	printf(" lbal");
 		if (r->oflags.hob.lbam)	printf(" lbam");
 		if (r->oflags.hob.lbah)	printf(" lbah");
 		printf(" }\n");
@@ -366,7 +389,7 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 	if (r->oflags.lob.lbah)		tf.lob.lbah  = r->lob.lbah;
 	if (r->oflags.lob.dev)		tf.dev       = r->lob.dev;
 	if (r->oflags.lob.command)	tf.command   = r->lob.command;
-	if (r->oflags.hob_all || r->iflags.hob_all) {
+	if (needs_lba48(tf.command,0,0) || r->oflags.hob_all || r->iflags.hob_all) {
 		tf.is_lba48 = 1;
 		if (r->oflags.hob.feat)	tf.hob.feat  = r->hob.feat;
 		if (r->oflags.hob.lbal)	tf.hob.lbal  = r->hob.lbal;
@@ -389,7 +412,7 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 			break;
 	}
 
-	rc = sg16(fd, rw, SG_PIO, &tf, data, data_bytes, timeout_secs);
+	rc = sg16(fd, rw, is_dma(tf.command), &tf, data, data_bytes, timeout_secs);
 	if (rc == -1) {
 		if (errno == EINVAL || errno == ENODEV)
 			goto use_legacy_ioctl;
@@ -418,6 +441,7 @@ use_legacy_ioctl:
 	if (verbose)
 		fprintf(stderr, "trying legacy HDIO_DRIVE_TASKFILE\n");
 	errno = 0;
+
 	rc = ioctl(fd, HDIO_DRIVE_TASKFILE, r);
 	if (verbose) {
 		int err = errno;

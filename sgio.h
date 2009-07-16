@@ -3,6 +3,7 @@
 #include <linux/types.h>
 
 enum {
+	ATA_OP_DSM			= 0x06, // Data Set Management (TRIM)
 	ATA_OP_READ_PIO			= 0x20,
 	ATA_OP_READ_PIO_ONCE		= 0x21,
 	ATA_OP_READ_LONG		= 0x22,

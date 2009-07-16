@@ -21,47 +21,49 @@
 #include "hdparm.h"
 #include "sgio.h"
 
+extern int verbose;
+
 /* Download a firmware segment to the drive */
 static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset,
-			  const void *data, unsigned int bytecount, int final_80h)
+			  const void *data, unsigned int bytecount)
 {
 	int err = 0;
 	struct hdio_taskfile *r;
 	unsigned int blockcount = bytecount / 512;
+	unsigned int timeout_secs = 20;
 	__u64 lba;
 
 	lba = ((offset / 512) << 8) | ((blockcount >> 8) & 0xff);
 	r = malloc(sizeof(struct hdio_taskfile) + bytecount);
 	if (!r) {
+		if (xfer_mode == 3) { putchar('\n'); fflush(stdout); }
 		err = errno;
 		perror("malloc()");
 		return err;
 	}
 	init_hdio_taskfile(r, ATA_OP_DOWNLOAD_MICROCODE, RW_WRITE, LBA28_OK, lba, blockcount & 0xff, bytecount);
+
 	r->lob.feat = xfer_mode;
-
-	if (final_80h)
-		r->lob.feat |= 0x80;
-
 	r->oflags.lob.feat  = 1;
 	r->iflags.lob.nsect = 1;
 
-	memcpy(r->data, data, bytecount);
+	if (data && bytecount)
+		memcpy(r->data, data, bytecount);
 
-	if (do_taskfile_cmd(fd, r, 30 /* timeout in secs */)) {
+	if (do_taskfile_cmd(fd, r, timeout_secs)) {
 		err = errno;
-		putchar('\n');
+		if (xfer_mode == 3) { putchar('\n'); fflush(stdout); }
 		perror("FAILED");
 	} else {
-		putchar('.');
-		fflush(stdout);
 		if (xfer_mode == 3) {
+			if (!verbose) { putchar('.'); fflush(stdout); }
 			switch (r->lob.nsect) {
 				case 1:	// drive wants more data
 				case 2:	// drive thinks it is all done
 					err = - r->lob.nsect;
 					break;
 				default: // no status indication
+					err = 0;
 					break;
 			}
 		}
@@ -70,22 +72,13 @@ static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset,
 	return err;
 }
 
-static int is_stec_c5240 (__u16 *id)
+int fwdownload (int fd, __u16 *id, const char *fwpath, int xfer_mode)
 {
-	static const char stec_model[] = "TSCEM CA8HS DS";
-	static const char stec_fwrev[] = "5C42-0";
-
-	return (0 == memcmp(id + 27, stec_model, strlen(stec_model))
-	 && 0 == memcmp(id + 23, stec_fwrev, strlen(stec_fwrev)));
-}
-
-int fwdownload (int fd, __u16 *id, const char *fwpath)
-{
-	int fwfd, err = 0, final_80h = 0, eof_okay = 0;
+	int fwfd, err = 0;
 	struct stat st;
 	const char *fw = NULL;
 	const int max_bytes = 0xffff * 512;
-	int xfer_mode, xfer_min = 1, xfer_max = 0xffff;
+	int xfer_min = 1, xfer_max = 0xffff, xfer_size;
 	ssize_t offset;
 
 	if ((fwfd = open(fwpath, O_RDONLY)) == -1 || fstat(fwfd, &st) == -1) {
@@ -113,34 +106,30 @@ int fwdownload (int fd, __u16 *id, const char *fwpath)
 		goto done;
 	}
 
-	printf("%s: %llu bytes\n", fwpath, (unsigned long long)st.st_size);
+	if (verbose)
+		printf("%s: %llu bytes\n", fwpath, (unsigned long long)st.st_size);
 
-	fw = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fwfd, 0);
+	fw = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED|MAP_POPULATE|MAP_LOCKED, fwfd, 0);
 	if (fw == MAP_FAILED) {
 		err = errno;
 		perror(fwpath);
 		goto done;
 	}
-	if (-1 == mlock(fw, st.st_size))
-		perror("mlock()");
 
-	if (is_stec_c5240(id)) {
-		xfer_mode = 3;
-		final_80h = 1;
-		eof_okay  = 1;
-	} else {
-		/* Check drive for fwdownload support */
-		if (!((id[83] & 1) && (id[86] & 1))) {
-			fprintf(stderr, "DOWNLOAD_MICROCODE: not supported by device\n");
-			err = ENOTSUP;
-			goto done;
-		}
-		if (((id[119] & 0x10) && (id[120] & 0x10)) || is_stec_c5240(id))
+	/* Check drive for fwdownload support */
+	if (!((id[83] & 1) && (id[86] & 1))) {
+		fprintf(stderr, "DOWNLOAD_MICROCODE: not supported by device\n");
+		err = ENOTSUP;
+		goto done;
+	}
+	if (xfer_mode == 0) {
+		if ((id[119] & 0x10) && (id[120] & 0x10))
 			xfer_mode = 3;
 		else
 			xfer_mode = 7;
 	}
-	if (xfer_mode == 3) {
+
+	if (xfer_mode == 3 || xfer_mode == 30) {
 		/* the newer, segmented transfer mode */
 		xfer_min = id[234];
 		if (xfer_min == 0 || xfer_min == 0xffff)
@@ -148,27 +137,56 @@ int fwdownload (int fd, __u16 *id, const char *fwpath)
 		xfer_max = id[235];
 		if (xfer_max == 0 || xfer_max == 0xffff)
 			xfer_max = xfer_min;
-		fprintf(stderr, "mode=%u, min=%u, max=%u\n", xfer_mode, xfer_min, xfer_max);
 	}
-	xfer_min *= 512;
-	xfer_max *= 512;
+
+	if (xfer_mode == 30) {	// mode-3, using xfer_max
+		xfer_mode = 3;
+		xfer_size = xfer_max;
+	} else if (xfer_mode == 3) {
+		xfer_size = xfer_min;
+	} else {
+		xfer_size = st.st_size / 512;
+		if (xfer_size > 0xffff) {
+			fprintf(stderr, "Error: file size (%llu) too large for mode7 transfers\n", (__u64)st.st_size);
+			err = EINVAL;
+			goto done;
+		}
+	}
+
+	xfer_size *= 512;	/* bytecount */
+
+	fprintf(stderr, "%s: xfer_mode=%d min=%u max=%u size=%u\n",
+		__func__, xfer_mode, xfer_min, xfer_max, xfer_size);
 
 	/* Perform the fwdownload, in segments if appropriate */
 	for (offset = 0; !err && offset < st.st_size;) {
-		int final_chunk = ((offset + xfer_min) >= st.st_size);
-		err = send_firmware(fd, xfer_mode, offset, fw + offset, xfer_min, final_chunk && final_80h);
-		offset += xfer_min;
+		if ((offset + xfer_size) >= st.st_size)
+			xfer_size = st.st_size - offset;
+		err = send_firmware(fd, xfer_mode, offset, fw + offset, xfer_size);
+		offset += xfer_size;
+
 		if (err == -2) {	// drive has had enough?
 			if (offset >= st.st_size) { // transfer complete?
 				err = 0;
 			} else {
+				if (xfer_mode == 3) { putchar('\n'); fflush(stdout); }
 				fprintf(stderr, "Error: drive completed transfer at %llu/%llu bytes\n",
 						(unsigned long long)offset, (unsigned long long)st.st_size);
 				err = EIO;
 			}
-		} else if (err == -1 && !eof_okay) {
+		} else if (err == -1) {
 			if (offset >= st.st_size) { // no more data?
-				fprintf(stderr, "Error: drive expects more data than provided\n");
+#if 0
+				/* Try sending an empty segment before complaining */
+				err = send_firmware(fd, xfer_mode, offset, NULL, 0);
+				if (err == 0 || err == -2) {
+					err = 0;
+					break;
+				}
+#endif
+				if (xfer_mode == 3) { putchar('\n'); fflush(stdout); }
+				fprintf(stderr, "Error: drive expects more data than provided,\n");
+				fprintf(stderr, "but the transfer may have worked regardless.\n");
 				err = EIO;
 			} else {
 				err = 0;

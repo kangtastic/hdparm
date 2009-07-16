@@ -1,6 +1,8 @@
 Mark's TO-DO list for hdparm:
 ============================
 
+- For SSDs:  --trim-file, --trim-sectors, --trim-device
+
 - Make parameter parsing/etc.. LBA48 safe everywhere (instead of merely u32).
 
 - ATA9 updates for IDENTIFY data.

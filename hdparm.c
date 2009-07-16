@@ -1,5 +1,6 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
 /*          - by Mark Lord (C) 1994-2008 -- freely distributable */
+#define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -26,7 +27,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.15"
+#define VERSION "v9.16"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -94,7 +95,7 @@ static int get_powermode  = 0, set_powermode = 0;
 static int set_apmmode = 0, get_apmmode= 0, apmmode = 0;
 static int get_cdromspeed = 0, set_cdromspeed = 0, cdromspeed = 0;
 static int do_IDentity = 0, drq_hsm_error = 0;
-static int do_fwdownload = 0;
+static int do_fwdownload = 0, xfer_mode = 0;
 static int	set_busstate = 0, get_busstate = 0, busstate = 0;
 static int	set_reread_partn = 0, get_reread_partn;
 static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
@@ -102,7 +103,7 @@ static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
 static int   make_bad_sector = 0, make_bad_sector_flagged;
 static __u64 make_bad_sector_addr = ~0ULL;
 
-#if 0
+#ifdef FORMAT_AND_ERASE
 static int   format_track = 0;
 static __u64 format_track_addr = ~0ULL;
 
@@ -110,11 +111,22 @@ static int   erase_sectors = 0;
 static __u64 erase_sectors_addr = ~0ULL;
 #endif
 
+//#ifndef BLKDISCARD
+//#define BLKDISCARD _IO(0x12,119)
+//#endif
+static int   trim_sectors = 0;
+static __u64 trim_sectors_addr = ~0ULL, trim_sectors_count = ~0ULL;
+
 static int   write_sector = 0;
 static __u64 write_sector_addr = ~0ULL;
 
 static int   read_sector = 0;
 static __u64 read_sector_addr = ~0ULL;
+
+#ifdef VERTEX_TRIM
+static int   vertex_trim = 0;
+static __u64 vertex_trim_addr = ~0ULL;
+#endif
 
 static int   set_max_sectors = 0, set_max_permanent, get_native_max_sectors = 0;
 static __u64 set_max_addr = 0;
@@ -406,7 +418,11 @@ static void dump_identity (__u16 *idw)
 	printf(" RawCHS=%u/%u/%u, TrkSize=%u, SectSize=%u, ECCbytes=%u\n",
 		idw[1], idw[3], idw[6], idw[4], idw[5], idw[22]);
 	dmpstr(" BuffType=", idw[20], BuffType, 3);
-	printf(", BuffSize=%ukB, MaxMultSect=%u", idw[21] / 2, idw[47] & 0xff);
+	if (idw[21] && idw[21] != 0xffff)
+		printf(", BuffSize=%ukB", idw[21] / 2);
+	else
+		printf(", BuffSize=unknown");
+	printf(", MaxMultSect=%u", idw[47] & 0xff);
 	if ((idw[47] & 0xff)) {
 		printf(", MultSect=");
 		if (!(idw[59] & 0x100))
@@ -982,7 +998,7 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname
 	has_write_unc = (id[ 83] & 0xc000) == 0x4000 && (id[ 86] & 0x8000) == 0x8000
 		     && (id[119] & 0xc004) == 0x4004 && (id[120] & 0xc000) == 0x4000;
 
-	if (has_write_unc || make_bad_sector_flagged || lba >> 28) {
+	if (has_write_unc || make_bad_sector_flagged || lba >= lba28_limit) {
 		if (!has_write_unc) {
 			printf("Device does not claim to implement the required WRITE_UNC_EXT command\n"
 				"This operation will probably fail (continuing regardless).\n");
@@ -1012,7 +1028,7 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname
 	return err;
 }
 
-#if 0
+#ifdef FORMAT_AND_ERASE
 static int do_format_track (int fd, __u64 lba, const char *devname)
 {
 	int err = 0;
@@ -1071,7 +1087,68 @@ static int do_erase_sectors (int fd, __u64 lba, const char *devname)
 	free(r);
 	return err;
 }
-#endif
+#endif /* FORMAT_AND_ERASE */
+
+static int do_trim_sectors (int fd, __u64 lba, __u64 nsectors, const char *devname)
+{
+#if 1
+	int err = 0;
+	struct hdio_taskfile *r;
+	__u64 range;
+
+	abort_if_not_full_device(fd, lba, devname, NULL);
+
+	r = malloc(sizeof(struct hdio_taskfile) + 512);
+	if (!r) {
+		err = errno;
+		perror("malloc()");
+		return err;
+	}
+	init_hdio_taskfile(r, ATA_OP_DSM, RW_WRITE, LBA48_FORCE, 0, 1, 512);
+	r->oflags.lob.feat = 1;
+	r->lob.feat = 0x01;	/* TRIM */
+	range = nsectors;
+	range = (range << 48) | lba;
+	*(__u64 *)(r->data) = __cpu_to_le64(range);
+
+	printf("trimming sectors %llu:%llu\n", lba, nsectors);
+	fflush(stdout);
+
+	// Try and ensure that the system doesn't have our sectors in cache:
+	flush_buffer_cache(fd);
+
+	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+		err = errno;
+		perror("FAILED");
+	} else {
+		printf("succeeded\n");
+	}
+
+	free(r);
+	return err;
+#else
+	int err = 0;
+	__u64 args[2];
+
+	abort_if_not_full_device(fd, lba, devname, NULL);
+
+	args[0] = lba * 512;
+	args[1] = nsectors * 512;
+
+	printf("trimming sectors %llu:%llu\n", lba, nsectors);
+	fflush(stdout);
+
+	// Try and ensure that the system doesn't have our sectors in cache:
+	flush_buffer_cache(fd);
+
+	if (ioctl(fd, BLKDISCARD, args)) {
+		err = errno;
+		perror(" BLKDISCARD failed");
+		exit(err);
+	}
+	return 0;
+#endif /* 0 */
+}
 
 static int do_write_sector (int fd, __u64 lba, const char *devname)
 {
@@ -1086,11 +1163,14 @@ static int do_write_sector (int fd, __u64 lba, const char *devname)
 		perror("malloc()");
 		return err;
 	}
-	ata_op = (lba >> 28) ? ATA_OP_WRITE_PIO_EXT : ATA_OP_WRITE_PIO;
+	ata_op = (lba >= lba28_limit) ? ATA_OP_WRITE_PIO_EXT : ATA_OP_WRITE_PIO;
 	init_hdio_taskfile(r, ata_op, RW_WRITE, LBA28_OK, lba, 1, 512);
 
 	printf("re-writing sector %llu: ", lba);
 	fflush(stdout);
+
+	// Try and ensure that the system doesn't have our sector in cache:
+	flush_buffer_cache(fd);
 
 	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
 		err = errno;
@@ -1099,12 +1179,41 @@ static int do_write_sector (int fd, __u64 lba, const char *devname)
 		printf("succeeded\n");
 	}
 
-	// Try and ensure that the system doesn't have our sector in cache:
-	flush_buffer_cache(fd);
-
 	free(r);
 	return err;
 }
+
+#ifdef VERTEX_TRIM
+static int do_vertex_trim (int fd, __u64 lba, const char *devname)
+{
+	int err = 0;
+	__u8 ata_op;
+	struct hdio_taskfile *r;
+
+	abort_if_not_full_device(fd, lba, devname, NULL);
+	r = malloc(sizeof(struct hdio_taskfile));
+	if (!r) {
+		err = errno;
+		perror("malloc()");
+		return err;
+	}
+	ata_op = 0xfd;
+	init_hdio_taskfile(r, ata_op, RW_READ, LBA48_FORCE, lba, 1, 0);
+	r->lob.dev = ATA_USING_LBA;
+
+	printf("trimming sector %llu: ", lba);
+	fflush(stdout);
+
+	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+		err = errno;
+		perror("FAILED");
+	} else {
+		printf("succeeded\n");
+	}
+	free(r);
+	return err;
+}
+#endif
 
 static int do_read_sector (int fd, __u64 lba, const char *devname)
 {
@@ -1119,7 +1228,7 @@ static int do_read_sector (int fd, __u64 lba, const char *devname)
 		perror("malloc()");
 		return err;
 	}
-	ata_op = (lba >> 28) ? ATA_OP_READ_PIO_EXT : ATA_OP_READ_PIO;
+	ata_op = (lba >= lba28_limit) ? ATA_OP_READ_PIO_EXT : ATA_OP_READ_PIO;
 	init_hdio_taskfile(r, ata_op, RW_READ, LBA28_OK, lba, 1, 512);
 
 	printf("reading sector %llu: ", lba);
@@ -1159,7 +1268,7 @@ static int do_set_max_sectors (int fd, __u16 *id, __u64 max_lba, int permanent)
 	struct hdio_taskfile r;
 	__u8 nsect = permanent ? 1 : 0;
 
-	if ((max_lba >> 28) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
+	if ((max_lba >= lba28_limit) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
 	} else {
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX, RW_READ, LBA28_OK, max_lba, nsect, 0);
@@ -1565,17 +1674,21 @@ void process_dev (char *devname)
 		if (get_native_max_sectors)
 			printf(" setting max visible sectors to %llu (%s)\n", set_max_addr, set_max_permanent ? "permanent" : "temporary");
 		id = get_identify_data(fd, id);
-		if (set_max_addr < get_lba_capacity(id))
-			confirm_i_know_what_i_am_doing("-Nnnnnn", "You have requested reducing the apparent size of the drive.\nThis is a BAD idea, and can easily destroy all of the drive's contents.");
-		err = do_set_max_sectors(fd, id, set_max_addr - 1, set_max_permanent);
-		id = (void *)-1; /* invalidate existing identify data */
+		if (id) {
+			if (set_max_addr < get_lba_capacity(id))
+				confirm_i_know_what_i_am_doing("-Nnnnnn", "You have requested reducing the apparent size of the drive.\nThis is a BAD idea, and can easily destroy all of the drive's contents.");
+			err = do_set_max_sectors(fd, id, set_max_addr - 1, set_max_permanent);
+			id = (void *)-1; /* invalidate existing identify data */
+		}
 	}
 	if (make_bad_sector) {
 		id = get_identify_data(fd, id);
-		confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
-		err = do_make_bad_sector(fd, id, make_bad_sector_addr, devname);
+		if (id) {
+			confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
+			err = do_make_bad_sector(fd, id, make_bad_sector_addr, devname);
+		}
 	}
-#if 0
+#ifdef FORMAT_AND_ERASE
 	if (format_track) {
 		confirm_i_know_what_i_am_doing("--format-track", "This flag is still under development and probably does not work correctly yet.\nYou are trying to deliberately destroy your device.\nThis is a BAD idea, and can easily result in total data loss.");
 		confirm_please_destroy_my_drive("--format-track", "This might destroy the drive and/or all data on it.");
@@ -1586,23 +1699,36 @@ void process_dev (char *devname)
 		confirm_please_destroy_my_drive("--erase-sectors", "This might destroy the drive and/or all data on it.");
 		err = do_erase_sectors(fd, erase_sectors_addr, devname);
 	}
-#endif
+#endif /* FORMAT_AND_ERASE */
+	if (trim_sectors) {
+		confirm_i_know_what_i_am_doing("--trim-sectors", "This flag is still under development and probably does not work correctly yet.\nYou are trying to deliberately destroy your device.\nThis is a BAD idea, and can easily result in total data loss.");
+		confirm_please_destroy_my_drive("--trim-sectors", "This might destroy the drive and/or all data on it.");
+		err = do_trim_sectors(fd, trim_sectors_addr, trim_sectors_count, devname);
+	}
 	if (write_sector) {
 		confirm_i_know_what_i_am_doing("--write-sector", "You are trying to deliberately overwrite a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
 		err = do_write_sector(fd, write_sector_addr, devname);
 	}
 	if (do_fwdownload) {
 		abort_if_not_full_device (fd, 0, devname, "--fwdownload requires the raw device, not a partition.");
-		confirm_i_know_what_i_am_doing("--fwdownload", "This flag has not yet been verified to work correctly in the field.\nYou are trying to deliberately overwrite the drive firmware with the contents of the specified file.\nIf this fails, your drive could be toast.");
+		confirm_i_know_what_i_am_doing("--fwdownload", "This flag has not been tested with many drives to date.\nYou are trying to deliberately overwrite the drive firmware with the contents of the specified file.\nIf this fails, your drive could be toast.");
 		confirm_please_destroy_my_drive("--fwdownload", "This might destroy the drive and well as all of the data on it.");
 		id = get_identify_data(fd, id);
-		err = fwdownload(fd, id, fwpath);
-		if (err)
-			exit(err);
+		if (id) {
+			err = fwdownload(fd, id, fwpath, xfer_mode);
+			if (err)
+				exit(err);
+		}
 	}
-	if (read_sector) {
+	if (read_sector)
 		err = do_read_sector(fd, read_sector_addr, devname);
+#ifdef vERTEX_TRIM
+	if (vertex_trim) {
+		confirm_i_know_what_i_am_doing("--vertex-trim", "This flag is still under development and probably does not work correctly yet.\nYou are trying to deliberately destroy your device.\nThis is a BAD idea, and can easily result in total data loss.");
+		confirm_please_destroy_my_drive("--vertex-trim", "This might destroy the drive and/or all data on it.");
+		err = do_vertex_trim(fd, vertex_trim_addr, devname);
 	}
+#endif
 	if (drq_hsm_error) {
 		id = get_identify_data(fd, id);
 		if (id) {
@@ -1822,14 +1948,16 @@ void process_dev (char *devname)
 	}
 	if (get_apmmode) {
 		id = get_identify_data(fd, id);
-		printf(" APM_level	= ");
-		if((id[83] & 0xc008) == 0x4008) {
-			if (id[86] & 0x0008)
-				printf("%u\n", id[91] & 0xff);
-			else
-				printf("off\n");
-		} else
-			printf("not supported\n");
+		if (id) {
+			printf(" APM_level	= ");
+			if((id[83] & 0xc008) == 0x4008) {
+				if (id[86] & 0x0008)
+					printf("%u\n", id[91] & 0xff);
+				else
+					printf("off\n");
+			} else
+				printf("not supported\n");
+		}
 	}
 	if (get_acoustic) {
 		id = get_identify_data(fd, id);
@@ -1908,11 +2036,12 @@ void process_dev (char *devname)
 		exit (err);
 }
 
-static void usage_help (int rc)
+static void usage_help (int clue, int rc)
 {
 	FILE *desc = rc ? stderr : stdout;
 
 	fprintf(desc,"\n%s - get/set hard disk parameters - version %s\n\n", progname, VERSION);
+	if (0) if (rc) fprintf(desc, "clue=%d\n", clue);	//FIXME
 	fprintf(desc,"Usage:  %s  [options] [device] ..\n\n", progname);
 	fprintf(desc,"Options:\n"
 	" -a   get/set fs readahead\n"
@@ -1967,7 +2096,10 @@ static void usage_help (int rc)
 	" --drq-hsm-error   crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
 	" --fibmap          show device extents (and fragmentation) for a file\n"
 	" --fibmap-sector   show absolute LBA of a specfic sector of a file\n"
-	" --fwdownload      Download firmware file to drive (EXTREMELY DANGEROUS)\n"
+	" --fwdownload            Download firmware file to drive (EXTREMELY DANGEROUS)\n"
+	" --fwdownload-mode3      Download firmware using min-size segments (EXTREMELY DANGEROUS)\n"
+	" --fwdownload-mode3-max  Download firmware using max-size segments (EXTREMELY DANGEROUS)\n"
+	" --fwdownload-mode7      Download firmware using a single segment (EXTREMELY DANGEROUS)\n"
 	" --idle-immediate  idle drive immediately\n"
 	" --idle-unload     idle immediately and unload heads\n"
 	" --Istdin          read identify data from stdin as ASCII hex\n"
@@ -1976,6 +2108,7 @@ static void usage_help (int rc)
 	" --prefer-ata12    use 12-byte (instead of 16-byte) SAT commands when possible\n"
 	" --read-sector     read and dump (in hex) a sector directly from the media\n"
 	" --security-help   display help for ATA security commands\n"
+	" --trim-sectors    tell SSD firmware to discard unneeded data sectors (lba and count)\n"
 	" --verbose         display extra diagnostics from some commands\n"
 	" --write-sector    repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
 	"\n");
@@ -2143,15 +2276,16 @@ static void get_security_password (int handle_NULL)
 		++argp;
 }
 
-static int
-get_lba_parm (int optional, const char flag_c, int *flag_p, __u64 *value_p, unsigned int min_value, const char *emsg)
-{
-	int got_value = 0, got_digit = 0;
-	const __u64 limit = (1ULL << 48) - 1;
-	__u64 value = *value_p;
+static const char *lba_emsg = "bad/missing sector value";
+static const __u64 lba_limit = (1ULL << 48) - 1;
 
-	if (!optional)
-		got_value = 1;	/* makes getting a value mandatory here */
+static int
+get_u64_parm (int optional, const char flag_c, int *flag_p, __u64 *value_p,
+		unsigned int min_value, __u64 limit, const char *eprefix, const char *emsg)
+{
+	int got_value = 0;
+	__u64 value = *value_p;
+	char *endp = NULL;
 
 	if (!*argp && argc && (isdigit(**argv) || (flag_p && flag_c == **argv)))
 		argp = *argv++, --argc;
@@ -2160,23 +2294,24 @@ get_lba_parm (int optional, const char flag_c, int *flag_p, __u64 *value_p, unsi
 		*flag_p = 0;
 		if (*argp == flag_c) {
 			*flag_p = 1;
-			got_value = 1;
 			argp++;
 		}
 	}
 
-	while (isdigit(*argp)) {
-		if (!got_digit++)
-			value = 0;
-		got_value = 1;
-		value = (value * 10) + (*argp++ - '0');
+	errno = 0;
+	value = strtoll(argp, &endp, 0);
+	if (errno != 0 || (endp != argp && ((__s64)value < (__s64)min_value || value > limit))) {
+		fprintf(stderr, "  %s: %s\n", eprefix, emsg);
+		exit(EINVAL);
 	}
-	if (got_value) {
-		if (value < min_value || value > limit) {
-			fprintf(stderr, "  %s: bad/missing sector value\n", emsg);
-			exit(EINVAL);
-		}
+	if (endp != argp) {
+		got_value = 1;
 		*value_p = value;
+		argp = endp;
+	}
+	if (!optional && !got_value) {
+		fprintf(stderr, "  %s: %s\n", eprefix, emsg);
+		exit(EINVAL);
 	}
 	return got_value;
 }
@@ -2186,7 +2321,7 @@ get_set_max_sectors_parms (void)
 {
 	get_native_max_sectors = noisy;
 	noisy = 1;
-	set_max_sectors = get_lba_parm(1, 'p', &set_max_permanent, &set_max_addr, 1, "-N");
+	set_max_sectors = get_u64_parm(1, 'p', &set_max_permanent, &set_max_addr, 1, lba_limit, "-N", lba_emsg);
 }
 
 static void
@@ -2195,14 +2330,14 @@ handle_standalone_longarg (char *name)
 	if (num_flags_processed) {
 		if (verbose)
 			fprintf(stderr, "handle_standalone_longarg: num_flags_processed == %d\n", num_flags_processed);
-		usage_help(EINVAL);
+		usage_help(1,EINVAL);
 	}
 	/* --Istdin is special: no filename arg(s) wanted here */
 	if (0 == strcasecmp(name, "Istdin")) {
 		if (argc > 0) {
 			if (verbose)
 				fprintf(stderr, "handle_standalone_longarg: argc(%d) > 0\n", argc);
-			usage_help(EINVAL);
+			usage_help(2,EINVAL);
 		}
 		identify_from_stdin();
 		exit(0);
@@ -2234,7 +2369,7 @@ handle_standalone_longarg (char *name)
 		security_command = ATA_OP_SECURITY_ERASE_UNIT;
 		get_security_password(1);
 	} else {
-		usage_help(EINVAL);
+		usage_help(3,EINVAL);
 	}
 }
 
@@ -2260,9 +2395,9 @@ do_fibmap_sector (const char *name)
 	__u64 sector, lba;
 
 	get_filename_parm(&path, name);
-	get_lba_parm(0, 0, NULL, &sector, 0, name);
+	get_u64_parm(0, 0, NULL, &sector, 0, lba_limit, name, lba_emsg);
 	if (num_flags_processed || argc)
-		usage_help(EINVAL);
+		usage_help(4,EINVAL);
 	err = do_fibmap(path, sector, &lba);
 	if (!err)
 		printf("%s[%llu]: %llu\n", path, sector, lba);
@@ -2278,7 +2413,7 @@ do_fibmap_file (const char *name)
 
 	get_filename_parm(&path, name);
 	if (num_flags_processed || argc)
-		usage_help(EINVAL);
+		usage_help(5,EINVAL);
 	exit(do_fibmap(path, 0, NULL));
 }
 
@@ -2314,30 +2449,53 @@ get_longarg (void)
 		do_fibmap_sector(name);
 	} else if (0 == strcasecmp(name, "fibmap")) {
 		do_fibmap_file(name);
+	} else if (0 == strcasecmp(name, "fwdownload-mode3")) {
+		get_filename_parm(&fwpath, name);
+		do_fwdownload = 1;
+		xfer_mode = 3;
+	} else if (0 == strcasecmp(name, "fwdownload-mode3-max")) {
+		get_filename_parm(&fwpath, name);
+		do_fwdownload = 1;
+		xfer_mode = 30;
+	} else if (0 == strcasecmp(name, "fwdownload-mode7")) {
+		get_filename_parm(&fwpath, name);
+		do_fwdownload = 1;
+		xfer_mode = 7;
 	} else if (0 == strcasecmp(name, "fwdownload")) {
 		get_filename_parm(&fwpath, name);
 		do_fwdownload = 1;
+		xfer_mode = 0;
 	} else if (0 == strcasecmp(name, "idle-immediate")) {
 		SET_FLAG1(idleimmediate);
 	} else if (0 == strcasecmp(name, "idle-unload")) {
 		SET_FLAG1(idleunload);
 	} else if (0 == strcasecmp(name, "make-bad-sector")) {
 		make_bad_sector = 1;
-		get_lba_parm(0, 'f', &make_bad_sector_flagged, &make_bad_sector_addr, 0, name);
-#if 0
+		get_u64_parm(0, 'f', &make_bad_sector_flagged, &make_bad_sector_addr, 0, lba_limit, name, lba_emsg);
+#ifdef FORMAT_AND_ERASE
 	} else if (0 == strcasecmp(name, "format-track")) {
 		format_track = 1;
-		get_lba_parm(0, 0, NULL, &format_track_addr, 0, name);
+		get_u64_parm(0, 0, NULL, &format_track_addr, 0, lba_limit, name, lba_emsg);
 	} else if (0 == strcasecmp(name, "erase-sectors")) {
 		erase_sectors = 1;
-		get_lba_parm(0, 0, NULL, &erase_sectors_addr, 0, name);
+		get_u64_parm(0, 0, NULL, &erase_sectors_addr, 0, lba_limit, name, lba_emsg);
 #endif
+	} else if (0 == strcasecmp(name, "trim-sectors")) {
+		open_flags |= O_RDWR;
+		trim_sectors = 1;
+		get_u64_parm(0, 0, NULL, &trim_sectors_addr, 0, lba_limit, name, lba_emsg);
+		get_u64_parm(0, 0, NULL, &trim_sectors_count, 0, 0xffff, "bad/missing sector-count", lba_emsg);
 	} else if (0 == strcasecmp(name, "write-sector") || 0 == strcasecmp(name, "repair-sector")) {
 		write_sector = 1;
-		get_lba_parm(0, 0, NULL, &write_sector_addr, 0, name);
+		get_u64_parm(0, 0, NULL, &write_sector_addr, 0, lba_limit, name, lba_emsg);
 	} else if (0 == strcasecmp(name, "read-sector")) {
 		read_sector = 1;
-		get_lba_parm(0, 0, NULL, &read_sector_addr, 0, name);
+		get_u64_parm(0, 0, NULL, &read_sector_addr, 0, lba_limit, name, lba_emsg);
+#ifdef VERTEX_TRIM
+	} else if (0 == strcasecmp(name, "vertex-trim")) {
+		vertex_trim = 1;
+		get_u64_parm(0, 0, NULL, &vertex_trim_addr, 0, lba_limit, name, lba_emsg);
+#endif
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
 	} else if (0 == strcasecmp(name, "security-mode")) {
@@ -2390,7 +2548,7 @@ int main (int _argc, char **_argv)
 	++argv;
 
 	if (!--argc)
-		usage_help(EINVAL);
+		usage_help(6,EINVAL);
 	while (argc--) {
 		argp = *argv++;
 		if (no_more_flags || argp[0] != '-') {
@@ -2404,9 +2562,9 @@ int main (int _argc, char **_argv)
 			continue;
 		}
 		if (disallow_flags)
-			usage_help(EINVAL);
+			usage_help(7,EINVAL);
 		if (!*++argp)
-			usage_help(EINVAL);
+			usage_help(8,EINVAL);
 		while (argp && (c = *argp++)) {
 			switch (c) {
 				case GET_SET_PARM('a',"filesystem-read-ahead",fsreadahead,0,2048);
@@ -2421,7 +2579,7 @@ int main (int _argc, char **_argv)
 				case      DO_FLAG('f',do_flush);
 				case      DO_FLAG('F',do_flush_wcache);
 				case      DO_FLAG('g',get_geom);
-				case              'h': usage_help(0); break;
+				case              'h': usage_help(9,0); break;
 				case     SET_FLAG('H',hitachi_temp);
 				case      DO_FLAG('i',do_identity);
 				case      DO_FLAG('I',do_IDentity);
@@ -2471,12 +2629,12 @@ int main (int _argc, char **_argv)
 
 
 				default:
-					usage_help(EINVAL);
+					usage_help(10,EINVAL);
 			}
 			num_flags_processed++;
 		}
 		if (!argc)
-			usage_help(EINVAL);
+			usage_help(11,EINVAL);
 	}
 	return 0;
 }

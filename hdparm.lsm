@@ -1,7 +1,7 @@
 Begin4
 Title:		hdparm
-Version:	9.15
-Entered-date:	2009-04-14
+Version:	9.16
+Entered-date:	2009-07-16
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
 		v9.15 Fix big-endian bugs
 		v9.14 Show TRIM support in -I; use O_RDONLY when opening the device
@@ -89,7 +89,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		91K hdparm-9.15.tar.gz
+		94K hdparm-9.16.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux, kernels 2.2 through 2.6
 Copying-policy:	BSD License
