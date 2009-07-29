@@ -8,6 +8,7 @@
  * (your choice) the GNU General Public License version 2,
  * or a BSD style license.
  */
+#define _FILE_OFFSET_BITS 64
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
@@ -21,6 +22,8 @@
 
 #include "hdparm.h"
 
+static const unsigned int sector_bytes = 512; // FIXME someday
+
 struct file_extent {
 	__u64 byte_offset;
 	__u64 first_block;
@@ -28,10 +31,9 @@ struct file_extent {
 	__u64 block_count;
 };
 
-static int
-handle_extent(struct file_extent ext, unsigned int sectors_per_block, __u64 start_lba, __u64 target_sect, __u64 *target_lba)
+static void handle_extent (struct file_extent ext, unsigned int sectors_per_block, __u64 start_lba)
 {
-	char lba_info[64];
+	char lba_info[64], len_info[32];
 	__u64 begin_lba, end_lba;
 	__u64 nsectors = ext.block_count * sectors_per_block;
 
@@ -42,64 +44,22 @@ handle_extent(struct file_extent ext, unsigned int sectors_per_block, __u64 star
 		begin_lba = end_lba = 0;
 	}
 
-	if (target_lba) {
-		if (ext.first_block) {
-			__u64 begin_sect = ext.byte_offset / 512;
-			__u64 end_sect   = begin_sect + nsectors;
-			if (target_sect >= begin_sect && target_sect < end_sect) {
-				*target_lba = begin_lba + (target_sect - begin_sect);
-				return 1;
-			}
-		}
-		return 0;
-	}
-
 	if (ext.first_block)
 		sprintf(lba_info, "%10llu %10llu", begin_lba, end_lba);
 	else
 		strcpy(lba_info, "      -          -   ");
-	printf("%12llu %s %10llu\n", ext.byte_offset, lba_info, nsectors);
-	return 0;
+	if (!ext.first_block && !nsectors)
+		strcpy(len_info, "      -   ");
+	else
+		sprintf(len_info, "%10llu", nsectors);
+	printf("%12llu %s %s\n", ext.byte_offset, lba_info, len_info);
 }
 
-int do_fibmap(const char *file_name, __u64 target_sect, __u64 *target_lba)
+static int walk_fibmap (int fd, struct stat *st, unsigned int sectors_per_block, __u64 start_lba)
 {
-	int fd, err;
-	struct stat st;
-	__u64 start_lba = 0, blk_idx, hole = ~0ULL;
-	unsigned int sectors_per_block;
-	unsigned long num_blocks;
 	struct file_extent ext;
-
-	if ((fd = open(file_name, O_RDONLY)) == -1 || fstat(fd, &st) == -1) {
-		err = errno;
-		perror(file_name);
-		return err;
-	}
-	if (!S_ISREG(st.st_mode)) {
-		fprintf(stderr, "%s: not a regular file\n", file_name);
-		close(fd);
-		return EINVAL;
-	}
-#if 0
-	if (st.st_size == 0) {
-	    	fprintf(stderr, "%s: empty file\n", file_name);
-		close(fd);
-		return EINVAL;
-	}
-#endif
-	/*
-	 * Get the filesystem starting LBA:
-	 */
-	err = get_dev_t_geometry(st.st_dev, NULL, NULL, NULL, &start_lba, NULL);
-	if (err)
-		return err;
-
-	sectors_per_block = st.st_blksize / 512;
-	if (!target_lba) {
-		printf("\n%s: underlying filesystem: blocksize %lu, begins at LBA %llu; assuming 512 byte sectors\n", file_name, (unsigned long)st.st_blksize, start_lba);
-		printf("%12s %10s %10s %10s\n", "byte_offset", "begin_LBA", "end_LBA", "sectors");
-	}
+	unsigned long num_blocks;
+	__u64 blk_idx, hole = ~0ULL;
 
 	/*
 	 * How many calls to FIBMAP do we need?
@@ -107,7 +67,7 @@ int do_fibmap(const char *file_name, __u64 target_sect, __u64 *target_lba)
 	 * for each file block.  This can be converted to a disk LBA using the filesystem
 	 * blocksize and LBA offset obtained earlier.
 	 */
-	num_blocks = (st.st_size + st.st_blksize - 1) / st.st_blksize;
+	num_blocks = (st->st_size + st->st_blksize - 1) / st->st_blksize;
 	memset(&ext, 0, sizeof(ext));
 
 	/*
@@ -131,9 +91,8 @@ int do_fibmap(const char *file_name, __u64 target_sect, __u64 *target_lba)
 		 * properly on files/filesystems with more than 4 billion blocks (~16TB),
 		 */
 		if (ioctl(fd, FIBMAP, &blknum) == -1) {
-			err = errno;
+			int err = errno;
 			perror("ioctl(FIBMAP)");
-			close(fd);
 			return err;
 		}
 		fs_blknum = blknum;	/* work in 64-bits as much as possible */
@@ -148,29 +107,151 @@ int do_fibmap(const char *file_name, __u64 target_sect, __u64 *target_lba)
 			/*
 			 * New extent: print previous extent (if any), and re-init the extent record.
 			 */
-			if (blk_idx && handle_extent(ext, sectors_per_block, start_lba, target_sect, target_lba))
-				goto done;
+			if (blk_idx)
+				handle_extent(ext, sectors_per_block, start_lba);
 			ext.first_block = fs_blknum;
 			ext.last_block  = fs_blknum ? fs_blknum : hole;
 			ext.block_count = 1;
-			ext.byte_offset = blk_idx * st.st_blksize;
+			ext.byte_offset = blk_idx * st->st_blksize;
 		}
 	}
-	if (!handle_extent(ext, sectors_per_block, start_lba, target_sect, target_lba)) {
+	handle_extent(ext, sectors_per_block, start_lba);
+	return 0;
+}
+
+#define FE_COUNT 204	// sized for just under 8192 bytes total
+#define FE_FLAG_EOF	(1 <<  0)
+#define FE_FLAG_UNKNOWN	(1 <<  1)
+#define FE_FLAG_UNALLOC	(1 <<  2)
+#define FE_FLAG_NOALIGN	(1 <<  8)
+
+#define EXTENT_UNKNOWN (FE_FLAG_UNKNOWN | FE_FLAG_UNALLOC | FE_FLAG_NOALIGN)
+
+struct fe_s {
+	__u64 logical;
+	__u64 physical;
+	__u64 length;
+	__u64 reserved64[2];
+	__u32 flags;
+	__u32 reserved32[3];
+};
+
+struct fm_s {
+	__u64 start;
+	__u64 length;
+	__u32 flags;
+	__u32 mapped_extents;
+	__u32 extent_count;
+	__u32 reserved;
+};
+
+struct fs_s {
+	struct fm_s fm;
+	struct fe_s fe[FE_COUNT];
+};
+
+#define FIEMAP	_IOWR('f', 11, struct fm_s)
+
+static int walk_fiemap (int fd, unsigned int sectors_per_block, __u64 start_lba)
+{
+	unsigned int i, done = 0;
+	unsigned int blksize = sectors_per_block * sector_bytes;
+	struct fs_s fs;
+
+	memset(&fs, 0, sizeof(fs));
+	do {
+		fs.fm.length = ~0ULL;
+		fs.fm.flags  = 0;
+		fs.fm.extent_count = FE_COUNT;
+
+		if (-1 == ioctl(fd, FIEMAP, &fs)) {
+			int err = errno;
+			//perror("ioctl(FIEMAP)");
+			return err;
+		}
+
+		if (!fs.fm.mapped_extents) {
+			done = 1;
+		} else {
+			struct file_extent ext;
+			memset(&ext, 0, sizeof(ext));
+			for (i = 0; i < fs.fm.mapped_extents; i++) {
+				__u64 phy_blk, ext_len;
+
+				ext.byte_offset = fs.fe[i].logical;
+				if (0) printf("log=%llu phy=%llu len=%llu flags=0x%x\n", fs.fe[i].logical,
+						fs.fe[i].physical, fs.fe[i].length, fs.fe[i].flags);
+				if (fs.fe[i].flags & EXTENT_UNKNOWN) {
+					ext.first_block = 0;
+					ext.last_block  = 0;
+					ext.block_count = 0; /* FIEMAP returns garbage for this. Ugh. */
+				} else {
+					phy_blk = fs.fe[i].physical / blksize;
+					ext_len = fs.fe[i].length   / blksize;
+
+					ext.first_block = phy_blk;
+					ext.last_block  = phy_blk + ext_len - 1;
+					ext.block_count = ext_len;
+				}
+				handle_extent(ext, sectors_per_block, start_lba);
+				if (fs.fe[i].flags & FE_FLAG_EOF)
+					done = 1;
+			}
+			fs.fm.start = (fs.fe[i-1].logical + fs.fe[i-1].length);
+		}
+	} while (!done);
+	return 0;
+}
+
+int do_filemap (const char *file_name)
+{
+	int fd, err;
+	struct stat st;
+	__u64 start_lba = 0;
+	unsigned int sectors_per_block;
+
+	if ((fd = open(file_name, O_RDONLY)) == -1) {
+		err = errno;
+		perror(file_name);
+		return err;
+	}
+	if (fstat(fd, &st) == -1) {
+		err = errno;
+		perror(file_name);
+		return err;
+	}
+	if (!S_ISREG(st.st_mode)) {
+		fprintf(stderr, "%s: not a regular file\n", file_name);
 		close(fd);
-		return EBADSLT;
+		return EINVAL;
 	}
-#if 0
-	if (no_non_hole_extents_found) {
-		/*
-		 * If we don't count any allocated blocks in a non zero-length file,
-		 * then assume that it is tail-packed.
-		 */
-		if (!target_lba)
-	    		printf("%s: TAIL PACKED (no allocated disk blocks)\n", file_name);
+
+	/*
+	 * Get the filesystem starting LBA:
+	 */
+	err = get_dev_t_geometry(st.st_dev, NULL, NULL, NULL, &start_lba, NULL);
+	if (err) {
+		close(fd);
+		return err;
 	}
-#endif
-done:
+
+	sectors_per_block = st.st_blksize / sector_bytes;
+	printf("\n%s:\n filesystem blocksize %lu, begins at LBA %llu;"
+	       " assuming %u byte sectors.\n",
+	       file_name, (unsigned long)st.st_blksize, start_lba, sector_bytes);
+	printf("%12s %10s %10s %10s\n", "byte_offset", "begin_LBA", "end_LBA", "sectors");
+
+	if (st.st_size == 0) {
+		struct file_extent ext;
+		memset(&ext, 0, sizeof(ext));
+		handle_extent(ext, sectors_per_block, start_lba);
+		close(fd);
+		return 0;
+	}
+
+	err = walk_fiemap(fd, sectors_per_block, start_lba);
+	if (err)
+		err = walk_fibmap(fd, &st, sectors_per_block, start_lba);
 	close (fd);
 	return 0;
 }

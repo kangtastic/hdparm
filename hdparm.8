@@ -1,4 +1,4 @@
-.TH HDPARM 8 "July 2009" "Version 9.16"
+.TH HDPARM 8 "July 2009" "Version 9.17"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -179,6 +179,17 @@ and
 .B -T
 timings and other flags.
 .TP
+.I --fallocate
+When used, this must be the only flag given.
+It requires a file path as a parameter, followed by a block count
+(1024 bytes/block) for the size.
+It will then create a new file of that size, but without actually
+having to write any data to the file.  So this will complete
+very quickly and without thrashing the storage device.
+.IP
+Eg. Create a 10KByte file:
+.B hdparm --fallocate 10 temp_file
+.TP
 .I --fibmap
 When used, this must be the only flag given.
 It requires a file path as a parameter, and will print
@@ -189,18 +200,6 @@ referenced from sector 0 of the physical device
 This information can then be used for a variety of purposes,
 such as examining the degree of fragmenation of larger files, or
 determining appropriate sectors to deliberately corrupt
-during fault-injection testing procedures.
-.TP
-.I --fibmap-sector
-When used, this must be the only flag given.
-It requires a file path followed by a sector number as parameters.
-This sector number is given relative to the start of the file itself,
-not the device.  hdparm will scan the device extents occupied by the file,
-and print out the absolute LBA number of the requested sector of the file.
-This LBA number is referenced from sector 0 of the physical device
-(not the partition or filesystem).
-This LBA value can then be used for a variety of purposes,
-including determining an appropriate sector to deliberately corrupt
 during fault-injection testing procedures.
 .TP
 .I --fwdownload
@@ -570,7 +569,7 @@ processing of
 .I -t
 using the BLKFLSBUF ioctl.
 .TP
-.I --trim-sectors
+.I --trim-sector-ranges
 For Solid State Drives (SSDs).
 .B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
 Tells the drive firmware 
@@ -578,9 +577,12 @@ to discard unneeded data sectors, destroying any data that may have
 been present within them.  This makes those sectors available for
 immediate use by the firmware's garbage collection mechanism, to
 improve scheduling for wear-leveling of the flash media.
-This option expects two parameters immediately after the flag:
-an LBA starting address, and a sector count.
+This option expects one or more sector range pairs immediately after the flag:
+an LBA starting address, a colon, and a sector count, with no intervening spaces.
 .B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
+.IP
+Eg.
+.B hdparm --trim-sectors 1000:4 7894:16 /dev/sdz
 .TP
 .I -u
 Get/set interrupt-unmask flag for the drive.  A setting of

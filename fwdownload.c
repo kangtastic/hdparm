@@ -21,6 +21,11 @@
 #include "hdparm.h"
 #include "sgio.h"
 
+/* glibc-2.2 / linux-2.4 don't have MAP_POPULATE */
+#ifndef MAP_POPULATE
+#define MAP_POPULATE	0
+#endif
+
 extern int verbose;
 
 /* Download a firmware segment to the drive */

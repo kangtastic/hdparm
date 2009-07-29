@@ -19,6 +19,7 @@
 #include <sys/mount.h>
 #include <sys/mman.h>
 #include <linux/types.h>
+#include <linux/fs.h>
 #include <linux/major.h>
 #include <asm/byteorder.h>
 
@@ -27,7 +28,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.16"
+#define VERSION "v9.17"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -111,11 +112,8 @@ static int   erase_sectors = 0;
 static __u64 erase_sectors_addr = ~0ULL;
 #endif
 
-//#ifndef BLKDISCARD
-//#define BLKDISCARD _IO(0x12,119)
-//#endif
-static int   trim_sectors = 0;
-static __u64 trim_sectors_addr = ~0ULL, trim_sectors_count = ~0ULL;
+static struct sector_range_s *trim_sector_ranges = NULL;
+static int   trim_sector_ranges_count = 0;
 
 static int   write_sector = 0;
 static __u64 write_sector_addr = ~0ULL;
@@ -136,6 +134,7 @@ static int	i_know_what_i_am_doing = 0;
 static int	please_destroy_my_drive = 0;
 
 const int timeout_12secs = 12;
+const int timeout_5mins = (5 * 60);
 const int timeout_2hrs   = (2 * 60 * 60);
 
 static int open_flags = O_RDONLY|O_NONBLOCK;
@@ -1089,35 +1088,49 @@ static int do_erase_sectors (int fd, __u64 lba, const char *devname)
 }
 #endif /* FORMAT_AND_ERASE */
 
-static int do_trim_sectors (int fd, __u64 lba, __u64 nsectors, const char *devname)
+struct sector_range_s {
+	__u64	lba;
+	__u64	nsectors;
+};
+
+static int do_trim_sector_ranges (int fd, int nranges, struct sector_range_s *sr, const char *devname)
 {
-#if 1
-	int err = 0;
+	int i, err = 0;
 	struct hdio_taskfile *r;
-	__u64 range;
+	__u64 range, *p, total_sectors = 0;
+	int srsize = ((nranges * 8) + 511) / 512;
 
-	abort_if_not_full_device(fd, lba, devname, NULL);
+	srsize *= 512;
 
-	r = malloc(sizeof(struct hdio_taskfile) + 512);
+	abort_if_not_full_device(fd, 0, devname, NULL);
+
+	r = malloc(sizeof(struct hdio_taskfile) + srsize);
 	if (!r) {
 		err = errno;
 		perror("malloc()");
 		return err;
 	}
-	init_hdio_taskfile(r, ATA_OP_DSM, RW_WRITE, LBA48_FORCE, 0, 1, 512);
+	memset(r, 0, sizeof(struct hdio_taskfile) + srsize);
+	init_hdio_taskfile(r, ATA_OP_DSM, RW_WRITE, LBA48_FORCE, 0, srsize / 512, srsize);
 	r->oflags.lob.feat = 1;
 	r->lob.feat = 0x01;	/* TRIM */
-	range = nsectors;
-	range = (range << 48) | lba;
-	*(__u64 *)(r->data) = __cpu_to_le64(range);
 
-	printf("trimming sectors %llu:%llu\n", lba, nsectors);
+	p = (void *)(r->data);
+	for (i = 0; i < nranges; ++i) {
+		total_sectors += sr->nsectors;
+		range = sr->nsectors;
+		range = (range << 48) | sr->lba;
+		*p++ = __cpu_to_le64(range);
+		++sr;
+	}
+
+	printf("trimming %llu sectors\n", total_sectors);
 	fflush(stdout);
 
 	// Try and ensure that the system doesn't have our sectors in cache:
 	flush_buffer_cache(fd);
 
-	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
+	if (do_taskfile_cmd(fd, r, timeout_5mins)) {
 		err = errno;
 		perror("FAILED");
 	} else {
@@ -1126,28 +1139,6 @@ static int do_trim_sectors (int fd, __u64 lba, __u64 nsectors, const char *devna
 
 	free(r);
 	return err;
-#else
-	int err = 0;
-	__u64 args[2];
-
-	abort_if_not_full_device(fd, lba, devname, NULL);
-
-	args[0] = lba * 512;
-	args[1] = nsectors * 512;
-
-	printf("trimming sectors %llu:%llu\n", lba, nsectors);
-	fflush(stdout);
-
-	// Try and ensure that the system doesn't have our sectors in cache:
-	flush_buffer_cache(fd);
-
-	if (ioctl(fd, BLKDISCARD, args)) {
-		err = errno;
-		perror(" BLKDISCARD failed");
-		exit(err);
-	}
-	return 0;
-#endif /* 0 */
 }
 
 static int do_write_sector (int fd, __u64 lba, const char *devname)
@@ -1700,10 +1691,9 @@ void process_dev (char *devname)
 		err = do_erase_sectors(fd, erase_sectors_addr, devname);
 	}
 #endif /* FORMAT_AND_ERASE */
-	if (trim_sectors) {
-		confirm_i_know_what_i_am_doing("--trim-sectors", "This flag is still under development and probably does not work correctly yet.\nYou are trying to deliberately destroy your device.\nThis is a BAD idea, and can easily result in total data loss.");
-		confirm_please_destroy_my_drive("--trim-sectors", "This might destroy the drive and/or all data on it.");
-		err = do_trim_sectors(fd, trim_sectors_addr, trim_sectors_count, devname);
+	if (trim_sector_ranges_count) {
+		confirm_please_destroy_my_drive("--trim-sectors_ranges", "This might destroy the drive and/or all data on it.");
+		err = do_trim_sector_ranges(fd, trim_sector_ranges_count, trim_sector_ranges, devname);
 	}
 	if (write_sector) {
 		confirm_i_know_what_i_am_doing("--write-sector", "You are trying to deliberately overwrite a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
@@ -2040,77 +2030,77 @@ static void usage_help (int clue, int rc)
 {
 	FILE *desc = rc ? stderr : stdout;
 
-	fprintf(desc,"\n%s - get/set hard disk parameters - version %s\n\n", progname, VERSION);
-	if (0) if (rc) fprintf(desc, "clue=%d\n", clue);	//FIXME
+	fprintf(desc,"\n%s - get/set hard disk parameters - version " VERSION "\n\n", progname);
+	if (0) if (rc) fprintf(desc, "clue=%d\n", clue);
 	fprintf(desc,"Usage:  %s  [options] [device] ..\n\n", progname);
 	fprintf(desc,"Options:\n"
-	" -a   get/set fs readahead\n"
-	" -A   get/set the drive look-ahead flag (0/1)\n"
-	" -b   get/set bus state (0 == off, 1 == on, 2 == tristate)\n"
-	" -B   set Advanced Power Management setting (1-255)\n"
-	" -c   get/set IDE 32-bit IO setting\n"
-	" -C   check drive power mode status\n"
-	" -d   get/set using_dma flag\n"
-	" -D   enable/disable drive defect management\n"
-	" -E   set cd/dvd drive speed\n"
-	" -f   flush buffer cache for device on exit\n"
-	" -F   flush drive write cache\n"
-	" -g   display drive geometry\n"
-	" -h   display terse usage information\n"
-	" -H   read temperature from drive (Hitachi only)\n"
-	" -i   display drive identification\n"
-	" -I   detailed/current information directly from drive\n"
-	" -k   get/set keep_settings_over_reset flag (0/1)\n"
-	" -K   set drive keep_features_over_reset flag (0/1)\n"
-	" -L   set drive doorlock (0/1) (removable harddisks only)\n"
-	" -M   get/set acoustic management (0-254, 128: quiet, 254: fast)\n"
-	" -m   get/set multiple sector count\n"
-	" -N   get/set max visible number of sectors (HPA) (VERY DANGEROUS)\n"
-	" -n   get/set ignore-write-errors flag (0/1)\n"
-	" -p   set PIO mode on IDE interface chipset (0,1,2,3,4,...)\n"
-	" -P   set drive prefetch count\n"
-	" -q   change next setting quietly\n"
-	" -Q   get/set DMA queue_depth (if supported)\n"
-	" -r   get/set device  readonly flag (DANGEROUS to set)\n"
-	" -R   obsolete\n"
-	" -s   set power-up in standby flag (0/1) (DANGEROUS)\n"
-	" -S   set standby (spindown) timeout\n"
-	" -t   perform device read timings\n"
-	" -T   perform cache read timings\n"
-	" -u   get/set unmaskirq flag (0/1)\n"
-	" -U   obsolete\n"
-	" -v   defaults; same as -acdgkmur for IDE drives\n"
-	" -V   display program version and exit immediately\n"
-	" -w   perform device reset (DANGEROUS)\n"
-	" -W   get/set drive write-caching flag (0/1)\n"
-	" -x   obsolete\n"
-	" -X   set IDE xfer mode (DANGEROUS)\n"
-	" -y   put drive in standby mode\n"
-	" -Y   put drive to sleep\n"
-	" -Z   disable Seagate auto-powersaving mode\n"
-	" -z   re-read partition table\n"
-	" --dco-freeze      freeze/lock current device configuration until next power cycle\n"
-	" --dco-identify    read/dump device configuration identify data\n"
-	" --dco-restore     reset device configuration back to factory defaults\n"
-	" --direct          use O_DIRECT to bypass page cache for timings\n"
-	" --drq-hsm-error   crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
-	" --fibmap          show device extents (and fragmentation) for a file\n"
-	" --fibmap-sector   show absolute LBA of a specfic sector of a file\n"
+	" -a   Get/set fs readahead\n"
+	" -A   Get/set the drive look-ahead flag (0/1)\n"
+	" -b   Get/set bus state (0 == off, 1 == on, 2 == tristate)\n"
+	" -B   Set Advanced Power Management setting (1-255)\n"
+	" -c   Get/set IDE 32-bit IO setting\n"
+	" -C   Check drive power mode status\n"
+	" -d   Get/set using_dma flag\n"
+	" -D   Enable/disable drive defect management\n"
+	" -E   Set cd/dvd drive speed\n"
+	" -f   Flush buffer cache for device on exit\n"
+	" -F   Flush drive write cache\n"
+	" -g   Display drive geometry\n"
+	" -h   Display terse usage information\n"
+	" -H   Read temperature from drive (Hitachi only)\n"
+	" -i   Display drive identification\n"
+	" -I   Detailed/current information directly from drive\n"
+	" -k   Get/set keep_settings_over_reset flag (0/1)\n"
+	" -K   Set drive keep_features_over_reset flag (0/1)\n"
+	" -L   Set drive doorlock (0/1) (removable harddisks only)\n"
+	" -M   Get/set acoustic management (0-254, 128: quiet, 254: fast)\n"
+	" -m   Get/set multiple sector count\n"
+	" -N   Get/set max visible number of sectors (HPA) (VERY DANGEROUS)\n"
+	" -n   Get/set ignore-write-errors flag (0/1)\n"
+	" -p   Set PIO mode on IDE interface chipset (0,1,2,3,4,...)\n"
+	" -P   Set drive prefetch count\n"
+	" -q   Change next setting quietly\n"
+	" -Q   Get/set DMA queue_depth (if supported)\n"
+	" -r   Get/set device  readonly flag (DANGEROUS to set)\n"
+	" -R   Obsolete\n"
+	" -s   Set power-up in standby flag (0/1) (DANGEROUS)\n"
+	" -S   Set standby (spindown) timeout\n"
+	" -t   Perform device read timings\n"
+	" -T   Perform cache read timings\n"
+	" -u   Get/set unmaskirq flag (0/1)\n"
+	" -U   Obsolete\n"
+	" -v   Defaults; same as -acdgkmur for IDE drives\n"
+	" -V   Display program version and exit immediately\n"
+	" -w   Perform device reset (DANGEROUS)\n"
+	" -W   Get/set drive write-caching flag (0/1)\n"
+	" -x   Obsolete\n"
+	" -X   Set IDE xfer mode (DANGEROUS)\n"
+	" -y   Put drive in standby mode\n"
+	" -Y   Put drive to sleep\n"
+	" -Z   Disable Seagate auto-powersaving mode\n"
+	" -z   Re-read partition table\n"
+	" --dco-freeze      Freeze/lock current device configuration until next power cycle\n"
+	" --dco-identify    Read/dump device configuration identify data\n"
+	" --dco-restore     Reset device configuration back to factory defaults\n"
+	" --direct          Use O_DIRECT to bypass page cache for timings\n"
+	" --drq-hsm-error   Crash system with a \"stuck DRQ\" error (VERY DANGEROUS)\n"
+	" --fallocate       Create a file without writing data to disk\n"
+	" --fibmap          Show device extents (and fragmentation) for a file\n"
 	" --fwdownload            Download firmware file to drive (EXTREMELY DANGEROUS)\n"
 	" --fwdownload-mode3      Download firmware using min-size segments (EXTREMELY DANGEROUS)\n"
 	" --fwdownload-mode3-max  Download firmware using max-size segments (EXTREMELY DANGEROUS)\n"
 	" --fwdownload-mode7      Download firmware using a single segment (EXTREMELY DANGEROUS)\n"
-	" --idle-immediate  idle drive immediately\n"
-	" --idle-unload     idle immediately and unload heads\n"
-	" --Istdin          read identify data from stdin as ASCII hex\n"
-	" --Istdout         write identify data to stdout as ASCII hex\n"
-	" --make-bad-sector deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
-	" --prefer-ata12    use 12-byte (instead of 16-byte) SAT commands when possible\n"
-	" --read-sector     read and dump (in hex) a sector directly from the media\n"
-	" --security-help   display help for ATA security commands\n"
-	" --trim-sectors    tell SSD firmware to discard unneeded data sectors (lba and count)\n"
-	" --verbose         display extra diagnostics from some commands\n"
-	" --write-sector    repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
+	" --idle-immediate  Idle drive immediately\n"
+	" --idle-unload     Idle immediately and unload heads\n"
+	" --Istdin          Read identify data from stdin as ASCII hex\n"
+	" --Istdout         Write identify data to stdout as ASCII hex\n"
+	" --make-bad-sector Deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
+	" --prefer-ata12    Use 12-byte (instead of 16-byte) SAT commands when possible\n"
+	" --read-sector     Read and dump (in hex) a sector directly from the media\n"
+	" --security-help   Display help for ATA security commands\n"
+	" --trim-sector-ranges    Tell SSD firmware to discard unneeded data sectors: lba:count ..\n"
+	" --verbose         Display extra diagnostics from some commands\n"
+	" --write-sector    Repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
 	"\n");
 	exit(rc);
 }
@@ -2277,6 +2267,7 @@ static void get_security_password (int handle_NULL)
 }
 
 static const char *lba_emsg = "bad/missing sector value";
+static const char *count_emsg = "bad/missing sector count";
 static const __u64 lba_limit = (1ULL << 48) - 1;
 
 static int
@@ -2388,33 +2379,29 @@ get_filename_parm (char **result, const char *emsg)
 }
 
 static void
-do_fibmap_sector (const char *name)
+do_fallocate (const char *name)
 {
-	int err;
 	char *path;
-	__u64 sector, lba;
+	__u64 blkcount;
 
+	get_u64_parm(0, 0, NULL, &blkcount, 0, (1ULL << 53), name, "bad/missing block-count");
 	get_filename_parm(&path, name);
-	get_u64_parm(0, 0, NULL, &sector, 0, lba_limit, name, lba_emsg);
 	if (num_flags_processed || argc)
 		usage_help(4,EINVAL);
-	err = do_fibmap(path, sector, &lba);
-	if (!err)
-		printf("%s[%llu]: %llu\n", path, sector, lba);
-	else if (err == EBADSLT)
-		fprintf(stderr, "%s[%llu]: unallocated\n", path, sector);
-	exit(err);
+	exit(do_fallocate_syscall(path, blkcount * 1024));
 }
 
 static void
 do_fibmap_file (const char *name)
 {
+	int err;
 	char *path;
 
 	get_filename_parm(&path, name);
 	if (num_flags_processed || argc)
 		usage_help(5,EINVAL);
-	exit(do_fibmap(path, 0, NULL));
+	err = do_filemap(path);
+	exit(err);
 }
 
 static int
@@ -2445,8 +2432,8 @@ get_longarg (void)
 		do_dco_freeze = 1;
 	} else if (0 == strcasecmp(name, "dco-identify")) {
 		do_dco_identify = 1;
-	} else if (0 == strcasecmp(name, "fibmap-sector")) {
-		do_fibmap_sector(name);
+	} else if (0 == strcasecmp(name, "fallocate")) {
+		do_fallocate(name);
 	} else if (0 == strcasecmp(name, "fibmap")) {
 		do_fibmap_file(name);
 	} else if (0 == strcasecmp(name, "fwdownload-mode3")) {
@@ -2480,11 +2467,29 @@ get_longarg (void)
 		erase_sectors = 1;
 		get_u64_parm(0, 0, NULL, &erase_sectors_addr, 0, lba_limit, name, lba_emsg);
 #endif
-	} else if (0 == strcasecmp(name, "trim-sectors")) {
+	} else if (0 == strcasecmp(name, "trim-sector-ranges")) {
+		int i, optional = 0, max_ranges = argc;
+		trim_sector_ranges = malloc(8 * max_ranges);
+		if (!trim_sector_ranges) {
+			int err = errno;
+			perror("malloc()");
+			exit(err);
+		}
 		open_flags |= O_RDWR;
-		trim_sectors = 1;
-		get_u64_parm(0, 0, NULL, &trim_sectors_addr, 0, lba_limit, name, lba_emsg);
-		get_u64_parm(0, 0, NULL, &trim_sectors_count, 0, 0xffff, "bad/missing sector-count", lba_emsg);
+		for (i = 0; i < max_ranges; ++i) {
+			char err_prefix[64];
+			struct sector_range_s *p = &trim_sector_ranges[i];
+			sprintf(err_prefix, "%s[%u]", name, i);
+			if (!get_u64_parm(optional, 0, NULL, &(p->lba), 0, lba_limit, err_prefix, lba_emsg))
+				break;
+			if (*argp++ != ':' || !isdigit(*argp)) {
+				fprintf(stderr, "%s: %s\n", err_prefix, count_emsg);
+				exit(EINVAL);
+			}
+			get_u64_parm(0, 0, NULL, &(p->nsectors), 1, 0xffff, err_prefix, count_emsg);
+			optional = 1;
+			trim_sector_ranges_count = i + 1;
+		}
 	} else if (0 == strcasecmp(name, "write-sector") || 0 == strcasecmp(name, "repair-sector")) {
 		write_sector = 1;
 		get_u64_parm(0, 0, NULL, &write_sector_addr, 0, lba_limit, name, lba_emsg);

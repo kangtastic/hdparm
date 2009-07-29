@@ -1,0 +1,201 @@
+#!/bin/bash
+#
+# First cut at an on-line SATA SSD TRIM utility.
+#
+# Copyright (C) 2009 Mark Lord.  All rights reserved.
+#
+# Requires gawk and hdparm >= 9.17.
+# This could all be rewritten as a single, 64-bit safe, standalone C-executable.
+# 
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License Version 2,
+# as published by the Free Software Foundation.
+# 
+# This program is distributed in the hope that it would be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software Foundation,
+# Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+if [ $# -eq 0 ]; then
+	echo >&2
+	echo "SATA SSD TRIM/wiper utility for mounted (r/w) filesystems" >&2
+	echo "Usage:  $0 <mount_point>" >&2
+	echo >&2
+	exit 1
+fi
+
+GAWK=/usr/bin/gawk
+HDPARM=/sbin/hdparm
+GREP=/bin/grep
+DF=/bin/df
+RM=/bin/rm
+ID=/usr/bin/id
+
+for prog in $GAWK $HDPARM $GREP $DF $RM ; do
+	if [ ! -x $prog ]; then
+		echo "$prog: needed but not found, aborting." >&2
+		exit 1
+	fi
+done
+
+HDPVER=`$HDPARM -V | awk '{gsub("[^0-9.]","",$2); if ($2 > 0) print ($2 * 100); else print 0; exit(0)}'`
+if [ $HDPVER -lt 917 ]; then
+	echo "$HDPARM: version >= 9.17 is required, aborting." >&2
+	exit 1
+fi
+
+if [ `$ID -u` -ne 0 ]; then
+	echo "You must be the super-user for this (try \"sudo $0\" instead), aborting." >&2
+	exit 1
+fi
+
+maxargs=1
+if [ "$1" = "--commit" ]; then
+	shift
+	commit=yes
+elif [ "$2" = "--commit" ]; then
+	commit=yes
+	maxargs=2
+fi
+
+if [ $# -gt $maxargs ]; then
+	echo "Too many parameters, aborting." >&2
+	exit 1
+fi
+
+fspath="$1"
+if [ "$fspath" = "" ]; then
+	echo "${0##*/}: missing mount point parameter (eg. \"/\"), aborting." >&2
+	exit 1
+fi
+
+if [ ! -d "$fspath" ]; then
+	echo "$fspath: not a directory, aborting." >&2
+	exit 1
+fi
+cd "$fspath" || exit $?
+
+fstype=`$GAWK -v fspath="$fspath" '{if ($2 == fspath) fstype=$3} END{print fstype}' < /proc/mounts`
+if [ "$fstype" == "" ]; then
+	echo "$fspath: not a filesystem mount point, aborting." >&2
+	exit 1
+elif [ "$fstype" != "ext4" ]; then
+	echo "$fspath: $fstype filesystem; this utility is only for ext4 at present, aborting." >&2
+	exit 1
+fi
+
+dev=`$DF . | $GAWK -v fspath="$fspath" '{if ($NF == fspath) dev=$1} END{print dev}'`
+if [ ! -b "$dev" ]; then
+	echo "$dev: not a block device" >&2
+	exit 1
+fi
+
+if $GREP "^$dev  *[^ ][^ ]*  *[^ ][^ ]* ro" /proc/mounts &>/dev/null ; then
+	echo "$dev: currently mounted read-only, aborting." >&2
+	exit 1
+fi
+
+( $HDPARM -I $dev | grep -i '[ 	][*][ 	]*Data Set Management TRIM supported' ) &>/dev/null
+if [ $? -ne 0 ]; then
+	echo "$dev: DSM TRIM command not supported" >&2
+	exit 1
+fi
+
+fsoffset=`$HDPARM -g "$dev" | $GAWK 'END {print \$NF}'`
+rdev=`echo $dev | $GAWK '{print gensub("[0-9]*$","","g")}'`
+
+tmpsize=`$DF -B 1024 . | $GAWK -v fspath="$fspath" '{if ($NF == fspath) sz=$4} END{print sz}'`
+if [ $tmpsize -lt 10000 ]; then
+	echo "$fspath: filesystem too full for TRIM, aborting." >&2
+	exit 1
+fi
+tmpsize=$((tmpsize - 3000))
+
+if [ "$commit" = "yes" ]; then
+	echo > /dev/tty
+	echo -n "This script could destroy your data.  Are you sure (y/N)? " >/dev/tty
+	read yn < /dev/tty
+	if [ "$yn" != "y" -a "$yn" != "Y" ]; then
+		echo "Aborting." >&2
+		exit 1
+	fi
+else
+	echo
+	echo "This will be a DRY-RUN only.  Use --commit to do it for real."
+	echo
+fi
+
+function do_cleanup(){
+	[ -e $tmpfile ] && rm -f $tmpfile
+	echo >&2
+	echo -n "Aborting, please wait.. " >&2
+	sync
+	echo "Done." >&2
+	exit 1
+}
+
+tmpfile=".wiper_tmp_$$"
+echo "Creating temporary file ($tmpsize KBytes):"
+
+trap do_cleanup SIGINT
+trap do_cleanup SIGTERM
+trap do_cleanup SIGQUIT
+trap do_cleanup SIGHUP
+
+$HDPARM --fallocate "${tmpsize}" $tmpfile || exit $?
+
+echo -n "Syncing disks.. "
+sync
+echo
+
+echo "Beginning trim operation:"
+
+$HDPARM --fibmap $tmpfile 2>/dev/null | $GAWK -v hdparm="$HDPARM" -v rdev="$rdev" -v fsoffset="$fsoffset" -v commit="$commit" '
+function do_trim (  trim,rc) {
+	trim = hdparm " --trim-sector-ranges "
+	print trim "(" nsectors " sectors) " rdev
+	trim=trim ranges "--please-destroy-my-drive " rdev
+	if (commit == "yes") {
+		fflush()
+		rc = system(trim " > /dev/null")
+	}
+	ranges = ""
+	nranges = 0
+	nsectors = 0
+	return rc
+}
+{ /* MAIN */
+	if (NF == 4 && $2 ~ "^[1-9][0-9]*$") {
+		lba = $2
+		count = $4
+		while (count > 0) {
+			this_count = (count > 65532) ? 65532 : count
+			ranges = ranges lba ":" this_count " "
+			nranges++
+			nsectors += this_count
+			lba   += this_count
+			count -= this_count
+			if (nranges >= (64 * 512 / 8) || nsectors > 4000000) {
+				rc = do_trim()
+				if (rc)
+					exit rc
+			}
+		}
+	}
+}
+END {
+	if (rc == 0 && nranges > 0)
+		do_trim()
+	exit rc
+}'
+
+echo -n "Removing temporary file: "
+rm $tmpfile
+sync
+echo
+echo "Done."
+exit

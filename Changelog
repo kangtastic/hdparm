@@ -1,3 +1,13 @@
+hdparm-9.16a
+	- added wiper/ subdirectory with preliminary SSD-wiper (TRIM) scripts
+	- nuked kernel_patches/ subdirectory
+	- Capitalize first word of each line of help output
+	- added --fallocate flag
+	- added --trim-sector-ranges flag
+	- removed --trim-sectors flag
+	- removed --fibmap-sector flag
+	- first cut at wiper.sh script, to trim unused space on a non-rw ext[234] filesystem
+	- embed VERSION string for easier digging out with strings(1)
 hdparm-9.16
 	- new protocol-specific forms of --fwdownload flags
 	- added --trim-sectors flag

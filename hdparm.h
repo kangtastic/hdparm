@@ -18,7 +18,8 @@ int sysfs_get_attr (int fd, const char *attr, const char *fmt, void *val1, void 
 int sysfs_set_attr (int fd, const char *attr, const char *fmt, void *val_p, int verbose);
 int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *start_lba, __u64 *nsectors);
 int get_dev_t_geometry (dev_t dev, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *start_lba, __u64 *nsectors);
-int do_fibmap(const char *file_name, __u64 target_sect, __u64 *target_lba);
+int do_filemap(const char *file_name);
+int do_fallocate_syscall (const char *name, __u64 bytecount);
 int fwdownload(int fd, __u16 *id, const char *fwpath, int xfer_mode);
 void dco_identify_print (__u16 *dco);
 int set_dvdspeed(int fd, int speed);
