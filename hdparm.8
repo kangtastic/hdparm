@@ -1,4 +1,4 @@
-.TH HDPARM 8 "July 2009" "Version 9.18"
+.TH HDPARM 8 "July 2009" "Version 9.19"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -183,8 +183,8 @@ timings and other flags.
 .I --fallocate
 This flag currently works only on ext4 and xfs filesystem types.
 When used, this must be the only flag given.
-It requires a file path as a parameter, followed by the desired file size
-in kilo-bytes (byte count divided by 1024).
+It requires two parameters: the desired file size in kilo-bytes
+(byte count divided by 1024), followed by the pathname for the new file.
 It will create a new file of the specified size,
 but without actually having to write any data to the file.
 This will normally complete very quickly, and without thrashing the storage device.

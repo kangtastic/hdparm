@@ -1,3 +1,6 @@
+hdparm-9.19
+	- fixed compile of fallocate.c on older systems
+	- fixed man page description of --fallocate (parameters were reversed)
 hdparm-9.18
 	- fixed -E (set cd/dvd streaming speed)
 	- updated man page for --fallocate, indicating ext4/xfs only
