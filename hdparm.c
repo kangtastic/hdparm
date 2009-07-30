@@ -28,7 +28,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.17"
+#define VERSION "v9.18"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -1521,16 +1521,12 @@ void process_dev (char *devname)
 		 * which we now do afterwards.
 		 */
 		if (get_cdromspeed)
-			printf ("setting cdrom speed to %d\n", cdromspeed);
-		if (ioctl (fd, CDROM_SELECT_SPEED, cdromspeed)) {
-			err = errno;
-			perror(" CDROM_SELECT_SPEED failed");
-		}
-		/* A fix? Applying SET STREAMING command. */
-		printf("setting dvd streaming speed to %d\n", cdromspeed);
+			printf ("setting cd/dvd speed to %d\n", cdromspeed);
 		if (set_dvdspeed(fd, cdromspeed) != 0) {
-			err = errno;
-			perror(" dvd speed setting failed");
+			if (ioctl (fd, CDROM_SELECT_SPEED, cdromspeed)) {
+				err = errno;
+				perror(" CDROM_SELECT_SPEED failed");
+			}
 		}
 	}
 	if (set_acoustic) {

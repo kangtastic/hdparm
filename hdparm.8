@@ -1,4 +1,4 @@
-.TH HDPARM 8 "July 2009" "Version 9.17"
+.TH HDPARM 8 "July 2009" "Version 9.18"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -170,6 +170,7 @@ Set cd/dvd drive speed.  This is NOT necessary for regular operation,
 as the drive will automatically switch speeds on its own.
 But if you want to play with it, just supply a speed number
 after the option, usually a number like 2 or 4.
+This can be useful in some cases, though, to smooth out DVD video playback.
 .TP
 .I -f
 Sync and flush the buffer cache for the device on exit.
@@ -180,12 +181,13 @@ and
 timings and other flags.
 .TP
 .I --fallocate
+This flag currently works only on ext4 and xfs filesystem types.
 When used, this must be the only flag given.
-It requires a file path as a parameter, followed by a block count
-(1024 bytes/block) for the size.
-It will then create a new file of that size, but without actually
-having to write any data to the file.  So this will complete
-very quickly and without thrashing the storage device.
+It requires a file path as a parameter, followed by the desired file size
+in kilo-bytes (byte count divided by 1024).
+It will create a new file of the specified size,
+but without actually having to write any data to the file.
+This will normally complete very quickly, and without thrashing the storage device.
 .IP
 Eg. Create a 10KByte file:
 .B hdparm --fallocate 10 temp_file

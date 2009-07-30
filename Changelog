@@ -1,7 +1,14 @@
-hdparm-9.16a
+hdparm-9.18
+	- fixed -E (set cd/dvd streaming speed)
+	- updated man page for --fallocate, indicating ext4/xfs only
+	- bumped max_sectors to 8000000 per TRIM in wiper scripts
+	- s/awk/$GAWK/ in wiper.sh.online script
+	- fixed Changelog for 9.17
+hdparm-9.17
 	- added wiper/ subdirectory with preliminary SSD-wiper (TRIM) scripts
 	- nuked kernel_patches/ subdirectory
 	- Capitalize first word of each line of help output
+	- added ioctl(FIEMAP) support to --fibmap
 	- added --fallocate flag
 	- added --trim-sector-ranges flag
 	- removed --trim-sectors flag

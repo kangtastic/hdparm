@@ -19,35 +19,48 @@ int set_dvdspeed(int fd, int speed)
 	struct cdrom_generic_command cgc;
 	struct request_sense sense;
 	unsigned char buffer[28];
+	unsigned long rwsize = 177 * speed;
+
 	memset(&cgc, 0, sizeof(cgc));
 	memset(&sense, 0, sizeof(sense));
 	memset(&buffer, 0, sizeof(buffer));
 
-	/* SET STREAMING command */
-	cgc.cmd[0] = 0xb6;
-	/* 28 byte parameter list length */
-	cgc.cmd[10] = 28;
-	cgc.sense = &sense;
-	cgc.buffer = buffer;
-	cgc.buflen = sizeof(buffer);
+	cgc.cmd[0] = 0xb6;	// SET_STREAMING
+
+	cgc.cmd[10] = 28;	// parameter list length (28 bytes)
+	cgc.sense   = &sense;
+	cgc.buffer  = buffer;
+	cgc.buflen  = sizeof(buffer);
 	cgc.data_direction = CGC_DATA_WRITE;
 
-	buffer[8] = 0xff;
-	buffer[9] = 0xff;
+	if (speed == 0)		// reset to default speed?
+		buffer[0] = 4;
+
+	buffer[ 8] = 0xff;
+	buffer[ 9] = 0xff;
 	buffer[10] = 0xff;
 	buffer[11] = 0xff;
 
-	buffer[15] = 177*speed;
+	// read size:
+	buffer[12] = rwsize >> 24;
+	buffer[13] = rwsize >> 16;
+	buffer[14] = rwsize >>  8;
+	buffer[15] = rwsize;
+
+	// read time = 1 second:
 	buffer[18] = 0x03;
 	buffer[19] = 0xE8;
 
-	buffer[23] = 177*speed;
+	// write size:
+	buffer[20] = rwsize >> 24;
+	buffer[21] = rwsize >> 16;
+	buffer[22] = rwsize >>  8;
+	buffer[23] = rwsize;
+
+	// write time = 1 second:
 	buffer[26] = 0x03;
 	buffer[27] = 0xE8;
 
-	if (ioctl(fd, CDROM_SEND_PACKET, &cgc) == 0)
-		return 0;
-	else
-		return -1;
+	return ioctl(fd, CDROM_SEND_PACKET, &cgc);
 }
 

@@ -145,13 +145,13 @@ function do_trim (  rc,trim) {
 				lba = (b[1] * blksects) + fsoffset
 				count = (b[2] - b[1] + 1) * blksects
 				while (count > 0) {
-					this_count = (count > 65532) ? 65532 : count
+					this_count = (count > 65535) ? 65535 : count
 					ranges = ranges lba ":" this_count " "
 					nranges++
 					nsectors += this_count
 					lba   += this_count
 					count -= this_count
-					if (nranges >= (64 * 512 / 8) || nsectors > 4000000) {
+					if (nranges >= (64 * 512 / 8) || nsectors > 8000000) {
 						rc = do_trim()
 						if (rc)
 							exit rc
