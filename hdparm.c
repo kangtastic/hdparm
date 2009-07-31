@@ -29,7 +29,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.20"
+#define VERSION "v9.21"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */

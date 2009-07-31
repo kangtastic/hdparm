@@ -1,3 +1,5 @@
+hdparm-9.21
+	- fixes and (big) speedups to wiper.sh (v1.2) script
 hdparm-9.20
 	- unified the online/offline wiper scripts into a single wiper.sh script
 	- fixed bug whereby the wiper scripts generated command-lines too long for bash

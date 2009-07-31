@@ -1,11 +1,10 @@
 #!/bin/bash
 #
-# SATA SSD free-space TRIM utility, version 1.0 by Mark Lord
+# SATA SSD free-space TRIM utility, version 1.2 by Mark Lord
 #
 # Copyright (C) 2009 Mark Lord.  All rights reserved.
 #
 # Requires gawk, dumpe2fs, and hdparm >= 9.17.
-# Need to re-code this in C someday to speed things up.
 # 
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License Version 2,
@@ -80,8 +79,15 @@ while [ $argc -gt 0 ]; do
 done
 [ "$target" = "" ] && usage_error
 
-function get_fsdir(){   ## from fsdev
-	$GAWK -v p="$1" '{if ($1 == p) r=$2} END{print r}' < /proc/mounts
+function get_fsdir(){   ## from fsdev; return last rw entry, or last ro entry if no rw
+	$GAWK -v p="$1" '{
+		if ($1 == p) {
+			if (rw != "rw") {
+				rw=substr($4,1,2)
+				r = $2
+			}
+		}
+	} END{print r}' < /proc/mounts
 }
 
 function get_fsdev(){   ## from fsdir
@@ -130,7 +136,7 @@ if [ "$method" = "online" ]; then
 fi
 
 if [ "$method" = "offline" ]; then
-	fsdev="$target"
+	[ "$fsdev" = "" ] && fsdev="$target"
 	fsdir="`get_fsdir $fsdev`"
 	[ "$fsdir" = "" -a "$fsdev" = "$rootdev" ] && fsdir="`get_fsdir /dev/root`"
 	if [ "$fsdir" != "" ]; then
@@ -196,8 +202,10 @@ if [ "$commit" = "yes" ]; then
 		echo "Aborting." >&2
 		exit 1
 	fi
+	fakeit=""
 else
 	echo "This will be a DRY-RUN only.  Use --commit to do it for real."
+	fakeit="# "
 fi
 
 function sync_disks(){
@@ -238,45 +246,39 @@ sync_disks
 echo "Beginning trim operation.."
 $get_trimlist 2>/dev/null |	\
 $GAWK	-v method="$method"	\
-	-v hdparm="$HDPARM"	\
 	-v rawdev="$rawdev"	\
 	-v fsoffset="$fsoffset"	\
-	-v commit="$commit" '
+	-v trim="$fakeit $HDPARM --please-destroy-my-drive --trim-sector-ranges " '
 
 ## Begin gawk program
-	function do_trim (  trim) {
-		trim = hdparm " --trim-sector-ranges "
-		if (commit != "yes")
-			trim = "# " trim
-		print trim "(" nsectors " sectors) " rawdev
-		fflush()
-		trim=trim ranges "--please-destroy-my-drive " rawdev
-		trim_result = system(trim " >/dev/null")
-		if (trim_result) {
-			printf "TRIM command failed, err=%d, line_length=%u\n", trim_result, length(trim)+11
-			exit trim_result
+	function do_trim () {
+		print "Trimming " nranges " free extents encompassing " nsectors " sectors."
+		err = system(trim ranges rawdev " >/dev/null")
+		if (err) {
+			printf "TRIM command failed, err=%d\n", err
+			exit err
 		}
 	}
 	function append_range (lba,count  ,this_count) {
 		while (count > 0) {
-			this_count = (count > 65535) ? 65535 : count
-			ranges = ranges lba ":" this_count " "
-			nranges++
-			nsectors += this_count
-			lba   += this_count
-			count -= this_count
-			## To conserve memory, limit TRIM commands to 255 sectors of range data,
-			##  or just under 32KB on the bash command-line.
-			if (length(ranges) > 32500 || nranges == (255 * 512 / 8)) {
+			this_count  = (count > 65535) ? 65535 : count
+			this_range  = lba ":" this_count " "
+			len        += length(this_range)
+			ranges      = ranges this_range
+			nsectors   += this_count
+			lba        += this_count
+			count      -= this_count
+			if (len > 64000 || ++nranges >= (255 * 512 / 8)) {
 				do_trim()
-				ranges = ""
-				nranges = 0
+				ranges   = ""
+				len      = 0
+				nranges  = 0
 				nsectors = 0
 			}
 		}
 	}
 	(method == "online"){
-		if (NF == 4 && $2 ~ "^[1-9][0-9]*$")
+		if (NF == 4 && $2 ~ "^[0-9][0-9]*$")
 			append_range($2,$4)
 		next
 	}
@@ -284,7 +286,7 @@ $GAWK	-v method="$method"	\
 		++ok
 	}
 	/^Block size: *[0-9]/{
-		blksects = $NF / 512	## FIXME someday
+		blksects = $NF / 512
 		++ok
 	}
 	/^  Free blocks: [0-9]/{
@@ -301,9 +303,9 @@ $GAWK	-v method="$method"	\
 		}
 	}
 	END {
-		if (trim_result == 0 && nranges > 0)
+		if (err == 0 && nranges > 0)
 			do_trim()
-		exit trim_result
+		exit err
 	}'
 ## End gawk program
 
