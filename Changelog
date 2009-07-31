@@ -1,3 +1,14 @@
+hdparm-9.20
+	- unified the online/offline wiper scripts into a single wiper.sh script
+	- fixed bug whereby the wiper scripts generated command-lines too long for bash
+	- fixed non-zero exit status from successful --trim-sector-ranges
+	- reimplemented --trim-sector-ranges to use sg16() directly, with aligned data
+	- allow wiper scripts to issue TRIM with up to 255 sectors of LBA-range data
+	- added kernel patch file for sil24 protocol fix, needed for wiper/TRIM
+	- cosmetic updates to the wiper scripts
+	- fixed confirmation prompt text for --trim-sector-ranges
+	- fixed manpage example for --trim-sector-ranges
+	- removed some dead code (previously #if 0'd)
 hdparm-9.19
 	- fixed compile of fallocate.c on older systems
 	- fixed man page description of --fallocate (parameters were reversed)

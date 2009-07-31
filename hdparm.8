@@ -1,4 +1,4 @@
-.TH HDPARM 8 "July 2009" "Version 9.19"
+.TH HDPARM 8 "July 2009" "Version 9.20"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -584,7 +584,7 @@ an LBA starting address, a colon, and a sector count, with no intervening spaces
 .B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS FLAG!!
 .IP
 Eg.
-.B hdparm --trim-sectors 1000:4 7894:16 /dev/sdz
+.B hdparm --trim-sector-ranges 1000:4 7894:16 /dev/sdz
 .TP
 .I -u
 Get/set interrupt-unmask flag for the drive.  A setting of

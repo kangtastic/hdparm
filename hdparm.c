@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/mount.h>
 #include <sys/mman.h>
+#include <sys/user.h>
 #include <linux/types.h>
 #include <linux/fs.h>
 #include <linux/major.h>
@@ -28,7 +29,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.19"
+#define VERSION "v9.20"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -120,11 +121,6 @@ static __u64 write_sector_addr = ~0ULL;
 
 static int   read_sector = 0;
 static __u64 read_sector_addr = ~0ULL;
-
-#ifdef VERTEX_TRIM
-static int   vertex_trim = 0;
-static __u64 vertex_trim_addr = ~0ULL;
-#endif
 
 static int   set_max_sectors = 0, set_max_permanent, get_native_max_sectors = 0;
 static __u64 set_max_addr = 0;
@@ -1093,52 +1089,50 @@ struct sector_range_s {
 	__u64	nsectors;
 };
 
-static int do_trim_sector_ranges (int fd, int nranges, struct sector_range_s *sr, const char *devname)
+static void do_trim_sector_ranges (int fd, int nranges, struct sector_range_s *sr, const char *devname)
 {
+	struct ata_tf tf;
+	__u64 range, *data, total_sectors = 0;
+	unsigned int data_sects, data_bytes;
 	int i, err = 0;
-	struct hdio_taskfile *r;
-	__u64 range, *p, total_sectors = 0;
-	int srsize = ((nranges * 8) + 511) / 512;
-
-	srsize *= 512;
 
 	abort_if_not_full_device(fd, 0, devname, NULL);
 
-	r = malloc(sizeof(struct hdio_taskfile) + srsize);
-	if (!r) {
-		err = errno;
-		perror("malloc()");
-		return err;
-	}
-	memset(r, 0, sizeof(struct hdio_taskfile) + srsize);
-	init_hdio_taskfile(r, ATA_OP_DSM, RW_WRITE, LBA48_FORCE, 0, srsize / 512, srsize);
-	r->oflags.lob.feat = 1;
-	r->lob.feat = 0x01;	/* TRIM */
+	data_sects = ((nranges * 8) + 511) / 512;
+	data_bytes = data_sects * 512;
 
-	p = (void *)(r->data);
+	data = mmap(NULL, data_bytes, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
+	if (data == MAP_FAILED) {
+		err = errno;
+		perror("mmap(MAP_ANONYMOUS)");
+		exit(err);
+	}
 	for (i = 0; i < nranges; ++i) {
 		total_sectors += sr->nsectors;
 		range = sr->nsectors;
 		range = (range << 48) | sr->lba;
-		*p++ = __cpu_to_le64(range);
+		data[i] = __cpu_to_le64(range);
 		++sr;
 	}
 
-	printf("trimming %llu sectors\n", total_sectors);
+	printf("trimming %llu sectors from %d ranges\n", total_sectors, nranges);
 	fflush(stdout);
 
-	// Try and ensure that the system doesn't have our sectors in cache:
+	// Try and ensure that the system doesn't have the to-be-trimmed sectors in cache:
 	flush_buffer_cache(fd);
 
-	if (do_taskfile_cmd(fd, r, timeout_5mins)) {
+	tf_init(&tf, ATA_OP_DSM, 0, data_sects);
+	tf.lob.feat = 0x01;	/* DSM/TRIM */
+
+	if (sg16(fd, SG_WRITE, SG_DMA, &tf, data, data_bytes, 300 /* seconds */)) {
 		err = errno;
 		perror("FAILED");
 	} else {
 		printf("succeeded\n");
 	}
 
-	free(r);
-	return err;
+	munmap(data, data_bytes);
+	exit(err);
 }
 
 static int do_write_sector (int fd, __u64 lba, const char *devname)
@@ -1173,38 +1167,6 @@ static int do_write_sector (int fd, __u64 lba, const char *devname)
 	free(r);
 	return err;
 }
-
-#ifdef VERTEX_TRIM
-static int do_vertex_trim (int fd, __u64 lba, const char *devname)
-{
-	int err = 0;
-	__u8 ata_op;
-	struct hdio_taskfile *r;
-
-	abort_if_not_full_device(fd, lba, devname, NULL);
-	r = malloc(sizeof(struct hdio_taskfile));
-	if (!r) {
-		err = errno;
-		perror("malloc()");
-		return err;
-	}
-	ata_op = 0xfd;
-	init_hdio_taskfile(r, ata_op, RW_READ, LBA48_FORCE, lba, 1, 0);
-	r->lob.dev = ATA_USING_LBA;
-
-	printf("trimming sector %llu: ", lba);
-	fflush(stdout);
-
-	if (do_taskfile_cmd(fd, r, timeout_12secs)) {
-		err = errno;
-		perror("FAILED");
-	} else {
-		printf("succeeded\n");
-	}
-	free(r);
-	return err;
-}
-#endif
 
 static int do_read_sector (int fd, __u64 lba, const char *devname)
 {
@@ -1688,8 +1650,8 @@ void process_dev (char *devname)
 	}
 #endif /* FORMAT_AND_ERASE */
 	if (trim_sector_ranges_count) {
-		confirm_please_destroy_my_drive("--trim-sectors_ranges", "This might destroy the drive and/or all data on it.");
-		err = do_trim_sector_ranges(fd, trim_sector_ranges_count, trim_sector_ranges, devname);
+		confirm_please_destroy_my_drive("--trim-sector-ranges", "This might destroy the drive and/or all data on it.");
+		do_trim_sector_ranges(fd, trim_sector_ranges_count, trim_sector_ranges, devname);
 	}
 	if (write_sector) {
 		confirm_i_know_what_i_am_doing("--write-sector", "You are trying to deliberately overwrite a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
@@ -1708,13 +1670,6 @@ void process_dev (char *devname)
 	}
 	if (read_sector)
 		err = do_read_sector(fd, read_sector_addr, devname);
-#ifdef vERTEX_TRIM
-	if (vertex_trim) {
-		confirm_i_know_what_i_am_doing("--vertex-trim", "This flag is still under development and probably does not work correctly yet.\nYou are trying to deliberately destroy your device.\nThis is a BAD idea, and can easily result in total data loss.");
-		confirm_please_destroy_my_drive("--vertex-trim", "This might destroy the drive and/or all data on it.");
-		err = do_vertex_trim(fd, vertex_trim_addr, devname);
-	}
-#endif
 	if (drq_hsm_error) {
 		id = get_identify_data(fd, id);
 		if (id) {
@@ -2492,11 +2447,6 @@ get_longarg (void)
 	} else if (0 == strcasecmp(name, "read-sector")) {
 		read_sector = 1;
 		get_u64_parm(0, 0, NULL, &read_sector_addr, 0, lba_limit, name, lba_emsg);
-#ifdef VERTEX_TRIM
-	} else if (0 == strcasecmp(name, "vertex-trim")) {
-		vertex_trim = 1;
-		get_u64_parm(0, 0, NULL, &vertex_trim_addr, 0, lba_limit, name, lba_emsg);
-#endif
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
 	} else if (0 == strcasecmp(name, "security-mode")) {

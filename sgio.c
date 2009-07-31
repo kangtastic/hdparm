@@ -66,7 +66,6 @@ static inline int needs_lba48 (__u8 ata_op, __u64 lba, unsigned int nsect)
 		case ATA_OP_READ_NATIVE_MAX_EXT:
 		case ATA_OP_SET_MAX_EXT:
 		case ATA_OP_FLUSHCACHE_EXT:
-		case 0xfd:	/* vertex_trim */
 			return 1;
 	}
 	if (lba >= lba28_limit)
