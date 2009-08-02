@@ -1,11 +1,9 @@
 Mark's TO-DO list for hdparm:
 ============================
 
-- For SSDs:  --trim-file, --trim-sectors, --trim-device
-
 - Make parameter parsing/etc.. LBA48 safe everywhere (instead of merely u32).
 
-- ATA9 updates for IDENTIFY data.
+- More ATA9 updates for IDENTIFY data.
 
 - Add "wipe-drive" functionality via SCT WRITE_SAME (or manual).
 
@@ -16,3 +14,5 @@ Mark's TO-DO list for hdparm:
 - Add utility to recover data from a drive with bad sectors.
 
 - Use SCSI Inquiry for -I on ATAPI, especially with libata.
+
+- Use read()/write() for non-ATA drives with --{read,write}-sectors

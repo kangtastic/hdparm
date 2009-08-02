@@ -35,8 +35,10 @@ int do_fallocate_syscall (const char *path, __u64 bytecount)
 	} else {
 		len = bytecount;
 		err = syscall(SYS_fallocate, fd, mode, offset, len);
-		if (err >= 0)
+		if (err >= 0) {
+			fsync(fd);
 			exit(0);
+		}
 		err = errno;
 		unlink(path);
 	}

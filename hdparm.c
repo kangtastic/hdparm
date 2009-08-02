@@ -29,7 +29,7 @@
 
 extern const char *minor_str[];
 
-#define VERSION "v9.21"
+#define VERSION "v9.22"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -1812,7 +1812,6 @@ void process_dev (char *devname)
 		__u32 cyls = 0, heads = 0, sects = 0;
 		__u64 start_lba = 0, nsectors = 0;
 		err = get_dev_geometry (fd, &cyls, &heads, &sects, &start_lba, &nsectors);
-
 		if (!err)
 			printf(" geometry      = %u/%u/%u, sectors = %lld, start = %lld\n",
 				cyls, heads, sects, nsectors, start_lba);

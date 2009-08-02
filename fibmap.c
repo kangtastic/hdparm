@@ -77,31 +77,31 @@ static int walk_fibmap (int fd, struct stat *st, unsigned int sectors_per_block,
 	 * Assumptions:
 	 * Throughout the file, there can be any number of blocks backed by holes
 	 * or by allocated blocks.  Tail-packed files are special - if we find a file
-	 * that has a size and has no allocated blocks, we can flag it as a "tail-packed"
-	 * file if we care: data is packed into the tail space of the inode block.
+	 * that has a size and has no allocated blocks, we could flag it as a "tail-packed"
+	 * file if we cared: data is packed into the tail space of the inode block.
 	 */
 	for (blk_idx = 0; blk_idx < num_blocks; blk_idx++) {
-		unsigned long blknum = blk_idx;
-		__u64 fs_blknum;
+		unsigned int blknum = blk_idx;
+		__u64 blknum64;
 		/*
 		 * FIBMAP takes a block index as input and on return replaces it with a
 		 * block number relative to the beginning of the filesystem/partition.
 		 * An output value of zero means "unallocated", or a "hole" in a sparse file.
-		 * Note that this is a 32-bit value on 32-bit systems, so it will not work
-		 * properly on files/filesystems with more than 4 billion blocks (~16TB),
+		 * Note that this is a 32-bit value, so it will not work properly on
+		 * files/filesystems with more than 4 billion blocks (~16TB),
 		 */
 		if (ioctl(fd, FIBMAP, &blknum) == -1) {
 			int err = errno;
 			perror("ioctl(FIBMAP)");
 			return err;
 		}
-		fs_blknum = blknum;	/* work in 64-bits as much as possible */
+		blknum64 = blknum;	/* work in 64-bits as much as possible */
 
-		if (blk_idx && fs_blknum == (ext.last_block + 1)) {
+		if (blk_idx && blknum64 == (ext.last_block + 1)) {
 			/*
 			 * Continuation of extent: Bump last_block and block_count.
 			 */
-			ext.last_block = fs_blknum ? fs_blknum : hole;
+			ext.last_block = blknum64 ? blknum64 : hole;
 			ext.block_count++;
 		} else {
 			/*
@@ -109,8 +109,8 @@ static int walk_fibmap (int fd, struct stat *st, unsigned int sectors_per_block,
 			 */
 			if (blk_idx)
 				handle_extent(ext, sectors_per_block, start_lba);
-			ext.first_block = fs_blknum;
-			ext.last_block  = fs_blknum ? fs_blknum : hole;
+			ext.first_block = blknum64;
+			ext.last_block  = blknum64 ? blknum64 : hole;
 			ext.block_count = 1;
 			ext.byte_offset = blk_idx * st->st_blksize;
 		}
@@ -119,8 +119,9 @@ static int walk_fibmap (int fd, struct stat *st, unsigned int sectors_per_block,
 	return 0;
 }
 
-#define FE_COUNT 204	// sized for just under 8192 bytes total
-#define FE_FLAG_EOF	(1 <<  0)
+//#define FE_COUNT 204	// sized for just under 8192 bytes total
+#define FE_COUNT 8000	// sized for just under 8192 bytes total
+#define FE_FLAG_LAST	(1 <<  0)
 #define FE_FLAG_UNKNOWN	(1 <<  1)
 #define FE_FLAG_UNALLOC	(1 <<  2)
 #define FE_FLAG_NOALIGN	(1 <<  8)
@@ -170,6 +171,7 @@ static int walk_fiemap (int fd, unsigned int sectors_per_block, __u64 start_lba)
 			return err;
 		}
 
+		if (0) fprintf(stderr, "ioctl(FIEMAP) returned %llu extents\n", (__u64)fs.fm.mapped_extents);
 		if (!fs.fm.mapped_extents) {
 			done = 1;
 		} else {
@@ -179,7 +181,7 @@ static int walk_fiemap (int fd, unsigned int sectors_per_block, __u64 start_lba)
 				__u64 phy_blk, ext_len;
 
 				ext.byte_offset = fs.fe[i].logical;
-				if (0) printf("log=%llu phy=%llu len=%llu flags=0x%x\n", fs.fe[i].logical,
+				if (0) fprintf(stderr, "log=%llu phy=%llu len=%llu flags=0x%x\n", fs.fe[i].logical,
 						fs.fe[i].physical, fs.fe[i].length, fs.fe[i].flags);
 				if (fs.fe[i].flags & EXTENT_UNKNOWN) {
 					ext.first_block = 0;
@@ -194,8 +196,21 @@ static int walk_fiemap (int fd, unsigned int sectors_per_block, __u64 start_lba)
 					ext.block_count = ext_len;
 				}
 				handle_extent(ext, sectors_per_block, start_lba);
-				if (fs.fe[i].flags & FE_FLAG_EOF)
-					done = 1;
+
+				if (fs.fe[i].flags & FE_FLAG_LAST) {
+					/*
+					 * Hit an ext4 bug in 2.6.29.4, where each FIEMAP call
+					 * had the LAST flag set in the final returned extent,
+					 * even though there were *plenty* more extents to be had
+					 * from continued FIEMAP calls.
+					 *
+					 * So, we'll ignore it here, and instead rely on getting
+					 * a zero count back from fs.fm.mapped_extents at the end.
+					 */
+					if (0) fprintf(stderr, "%s: ignoring LAST bit\n", __func__);
+					//done = 1;
+				}
+
 			}
 			fs.fm.start = (fs.fe[i-1].logical + fs.fe[i-1].length);
 		}

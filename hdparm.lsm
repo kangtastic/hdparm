@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	9.21
-Entered-date:	2009-07-31
+Version:	9.22
+Entered-date:	2009-08-02
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.22 Workaround ext4 FEIMAP bug, revamped wiper.sh with xfs support
 		v9.21 Fixes and speedups to wiper.sh script; no changes to hdparm itself
 		v9.20 Reworked --trim-sector-ranges; replaced b0rked wiper scripts with wiper.sh
 		v9.19 Fixed compile of fallocate.c on older systems; fixed manpage for --fallocate
@@ -95,7 +96,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		104K hdparm-9.21.tar.gz
+		110K hdparm-9.22.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux, kernels 2.2 through 2.6
 Copying-policy:	BSD License

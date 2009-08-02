@@ -1,3 +1,11 @@
+hdparm-9.22
+	- added fsync() call inside --fallocate
+	- fixed fibmap.c to work around an observed ext4 bug with FIEMAP's "LAST" flag
+	- added detailed comments to wiper.sh
+	- more rework of wiper.sh, added xfs support, added generic online support
+	- twiddled the code in geom.c slightly
+	- cosmetic changes in fibmap.c and the manpage description of --fibmap
+	- added kernel patch for compat_ioctl::fiemap support
 hdparm-9.21
 	- fixes and (big) speedups to wiper.sh (v1.2) script
 hdparm-9.20

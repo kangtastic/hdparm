@@ -1,4 +1,4 @@
-.TH HDPARM 8 "July 2009" "Version 9.21"
+.TH HDPARM 8 "August 2009" "Version 9.22"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -195,14 +195,22 @@ Eg. Create a 10KByte file:
 .I --fibmap
 When used, this must be the only flag given.
 It requires a file path as a parameter, and will print
-out a list of the device extents (sector ranges) occupied by that file
-on disk.  Sector numbers are given as absolute LBA numbers,
-referenced from sector 0 of the physical device
-(*not* the partition or filesystem).
+out a list of the block extents (sector ranges)
+occupied by that file on disk.
+Sector numbers are given as absolute LBA numbers,
+referenced from sector 0 of the physical device rather
+than from the partition or filesystem.
 This information can then be used for a variety of purposes,
 such as examining the degree of fragmenation of larger files, or
 determining appropriate sectors to deliberately corrupt
 during fault-injection testing procedures.
+.IP
+This flag uses the new FIEMAP (file extent map) ioctl() when available,
+and falls back to the older FIBMAP (file block map) ioctl() otherwise.
+Note that FIBMAP suffers from a 32-bit block-number interface,
+and thus not work beyond 8TB or 16TB.  FIBMAP is also very slow,
+and does not deal well with preallocated uncommitted extents
+in ext4/xfs file systems, unless a sync() is done before using this flag.
 .TP
 .I --fwdownload
 When used, this should be the only flag given.
