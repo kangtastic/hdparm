@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord
 
-VERSION=1.8
+VERSION=1.9
  
 # Copyright (C) 2009 Mark Lord.  All rights reserved.
 #
@@ -21,6 +21,8 @@ VERSION=1.8
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software Foundation,
 # Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+
+export LANG=en_US.utf-8
 
 ## Things we (may) need on various paths through this script:
 ##
@@ -63,8 +65,8 @@ fi
 ## Version 9.22 added an ext4/FIEMAP workaround and fsync() inside --fallocate
 ##
 HDPVER=`$HDPARM -V | $GAWK '{gsub("[^0-9.]","",$2); if ($2 > 0) print ($2 * 100); else print 0; exit(0)}'`
-if [ $HDPVER -lt 922 ]; then
-	echo "$HDPARM: version >= 9.22 is required, aborting." >&2
+if [ $HDPVER -lt 924 ]; then
+	echo "$HDPARM: version >= 9.24 is required, aborting." >&2
 	exit 1
 fi
 
@@ -359,9 +361,10 @@ if [ "$method" = "online" ]; then
 	## Figure out how much space to --fallocate (later), keeping in mind
 	## that this is a live filesystem, and we need to leave some space for
 	## other concurrent activities, as well as for filesystem overhead (metadata).
-	## So, reserve at least 1% or 7500 KB, whichever is larger:
+	## So, reserve at least 1% (3% on btrfs) or 7500 KB, whichever is larger:
 	##
 	reserved=$((freesize / 100))
+	[ "$fstype" = "btrfs" ] && reserved=$((reserved * 3))
 	[ $reserved -lt 7500 ] && reserved=7500
 	[ $verbose -gt 0 ] && echo "freesize = ${freesize} KB, reserved = ${reserved} KB"
 	tmpsize=$((freesize - reserved))
@@ -553,7 +556,7 @@ GAWKPROG='
 		}
 	}
 	(method == "online") {	## Output from "hdparm --fibmap", in absolute sectors:
-		if (NF == 4 && $2 ~ "^[0-9][0-9]*$")
+		if (NF == 4 && $2 ~ "^[1-9][0-9]*$")
 			append_range($2,$4)
 		next
 	}
@@ -569,14 +572,22 @@ GAWKPROG='
 		blksects = $NF / 512
 		next
 	}
+	/^Group [1-9][0-9]*:/ {	## Second stage output from dumpe2fs:
+		in_groups = 1
+		next
+	}
 	/^ *Free blocks: [0-9]/	{ ## Bulk of output from dumpe2fs:
-		if (blksects) {
+		if (blksects && in_groups) {
 			n = split(substr($0,16),f,",*  *")
 			for (i = 1; i <= n; ++i) {
-				if (f[i] ~ "^[0-9][0-9]*-[0-9][0-9]*$") {
+				if (f[i] ~ "^[1-9][0-9]*-[1-9][0-9]*$") {
 					split(f[i],b,"-")
 					lba   = (b[1] * blksects) + fsoffset
 					count = (b[2] - b[1] + 1) * blksects
+					append_range(lba,count)
+				} else if (f[i] ~ "^[1-9][0-9]*$") {
+					lba   = (f[i] * blksects) + fsoffset
+					count = blksects;
 					append_range(lba,count)
 				}
 			}

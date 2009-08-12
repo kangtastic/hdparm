@@ -34,7 +34,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.23"
+#define VERSION "v9.24"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -2500,7 +2500,7 @@ get_longarg (void)
 		trim_from_stdin = 1;
 	} else if (0 == strcasecmp(name, "trim-sector-ranges")) {
 		int i, optional = 0, max_ranges = argc;
-		trim_sector_ranges = malloc(8 * max_ranges);
+		trim_sector_ranges = malloc(sizeof(struct sector_range_s) * max_ranges);
 		if (!trim_sector_ranges) {
 			int err = errno;
 			perror("malloc()");

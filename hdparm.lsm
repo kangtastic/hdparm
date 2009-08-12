@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	9.23
-Entered-date:	2009-08-09
+Version:	9.24
+Entered-date:	2009-08-12
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.24 Fixed nasty malloc() bug in --trim-sector-ranges code
 		v9.23 Added --trim-sector-ranges-stdin flag
 		v9.22 Workaround ext4 FEIMAP bug, revamped wiper.sh with xfs support
 		v9.21 Fixes and speedups to wiper.sh script; no changes to hdparm itself
@@ -97,7 +98,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		110K hdparm-9.23.tar.gz
+		110K hdparm-9.24.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux, kernels 2.2 through 2.6
 Copying-policy:	BSD License

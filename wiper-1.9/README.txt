@@ -3,7 +3,7 @@ TRIM / wiper script for SATA SSDs   (August 2009)
 
 The wiper.sh script is for tuning up SATA SSDs (Solid-State-Drives).
 
-It calculate a list of free (unallocated) blocks within a filesystem,
+It calculates a list of free (unallocated) blocks within a filesystem,
 and informs the SSD firmware of those blocks, so that it can better manage
 the underlying media for wear-leveling and garbage-collection purposes.
 

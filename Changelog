@@ -1,3 +1,5 @@
+hdparm-9.24
+	- fixed malloc() bug in --trim-sector-ranges: it was allocating half the required size (oops).
 hdparm-9.23
 	- minor cosmetic changes in fibmap.c
 	- added --trim-sector-ranges-stdin for wiper.sh-2.0
