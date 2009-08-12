@@ -1,3 +1,8 @@
+hdparm-9.23
+	- minor cosmetic changes in fibmap.c
+	- added --trim-sector-ranges-stdin for wiper.sh-2.0
+	- tightened up excess-args checking on a number of flags
+	- added name to version line
 hdparm-9.22
 	- added fsync() call inside --fallocate
 	- fixed fibmap.c to work around an observed ext4 bug with FIEMAP's "LAST" flag

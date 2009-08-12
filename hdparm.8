@@ -1,4 +1,4 @@
-.TH HDPARM 8 "August 2009" "Version 9.22"
+.TH HDPARM 8 "August 2009" "Version 9.23"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -593,6 +593,13 @@ an LBA starting address, a colon, and a sector count, with no intervening spaces
 .IP
 Eg.
 .B hdparm --trim-sector-ranges 1000:4 7894:16 /dev/sdz
+.TP
+.I --trim-sector-ranges-stdin
+Identical to
+.B --trim-sector-ranges
+above, except the list of lba:count pairs is read from stdin
+rather than being specified on the command line.  This can be used
+to avoid problems with excessively long command lines. 
 .TP
 .I -u
 Get/set interrupt-unmask flag for the drive.  A setting of

@@ -119,8 +119,7 @@ static int walk_fibmap (int fd, struct stat *st, unsigned int sectors_per_block,
 	return 0;
 }
 
-//#define FE_COUNT 204	// sized for just under 8192 bytes total
-#define FE_COUNT 8000	// sized for just under 8192 bytes total
+#define FE_COUNT	8000
 #define FE_FLAG_LAST	(1 <<  0)
 #define FE_FLAG_UNKNOWN	(1 <<  1)
 #define FE_FLAG_UNALLOC	(1 <<  2)
@@ -199,7 +198,7 @@ static int walk_fiemap (int fd, unsigned int sectors_per_block, __u64 start_lba)
 
 				if (fs.fe[i].flags & FE_FLAG_LAST) {
 					/*
-					 * Hit an ext4 bug in 2.6.29.4, where each FIEMAP call
+					 * Hit an ext4 bug in 2.6.29.4, where some FIEMAP calls
 					 * had the LAST flag set in the final returned extent,
 					 * even though there were *plenty* more extents to be had
 					 * from continued FIEMAP calls.

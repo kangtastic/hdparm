@@ -1,10 +1,13 @@
 #!/bin/bash
 #
-# SATA SSD free-space TRIM utility, version 1.5 by Mark Lord
-#
+# SATA SSD free-space TRIM utility, by Mark Lord
+
+VERSION=1.8
+ 
 # Copyright (C) 2009 Mark Lord.  All rights reserved.
 #
 # Requires gawk, a really-recent hdparm, and various other programs.
+# This needs to be redone entirely in C, for 64-bit math, someday.
 # 
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License Version 2,
@@ -46,6 +49,7 @@ function require_prog(){
 }
 
 echo
+echo "${0##*/}: Linux SATA SSD TRIM utility, version $VERSION, by Mark Lord."
 require_prog $HDPARM $GAWK $BLKID $GREP $ID $LS $DF $RM
 
 ## I suppose this will confuse the three SELinux users out there:
@@ -64,6 +68,42 @@ if [ $HDPVER -lt 922 ]; then
 	exit 1
 fi
 
+## Convert relative path "$1" into an absolute pathname, resolving all symlinks:
+##
+function get_realpath(){
+	iter=0
+	p="$1"
+	while [ -e "$p" -a $iter -lt 100 ]; do
+		## Strip trailing slashes:
+		while [ "$p" != "/" -a "$p" != "${p%%/}" ]; do
+			p="${p%%/}"
+		done
+		## Split into directory:leaf portions:
+		d="${p%/*}"
+		t="${p##*/}"
+		## If the split worked, then cd into the directory portion:
+		if [ "$d" != "" -a "$d" != "$p" ]; then
+			cd -P "$d" || exit
+			p="$t"
+		fi
+		## If what we have left is a directory, then cd to it and print realpath:
+		if [ -d "$p" ]; then
+			cd -P "$p" || exit
+			pwd -P
+			exit
+		## Otherwise if it is a symlink, read the link and loop again:
+		elif [ -h "$p" ]; then
+			p="`$LS -ld "$p" | awk '{sub("^[^>]*-[>] *",""); print}'`"
+		## Otherwise, prefix $p with the cwd path and print it:
+		elif [ -e "$p" ]; then
+			[ "${p:0:1}" = "/" ] || p="`pwd -P`/$p"
+			echo "$p"
+			exit
+		fi
+		iter=$((iter + 1))
+	done
+}
+
 ## The usual terse usage information:
 ##
 function usage_error(){
@@ -80,9 +120,8 @@ function usage_error(){
 ##
 verbose=0
 commit=""
-target=""
-method=""
 argc=$#
+arg=""
 while [ $argc -gt 0 ]; do
 	if [ "$1" = "--commit" ]; then
 		commit=yes
@@ -91,22 +130,38 @@ while [ $argc -gt 0 ]; do
 	elif [ "$1" = "" ]; then
 		usage_error
 	else
-		[ "$target" != "" ] && usage_error
-		if [ "$1" != "${1##* }" ]; then
-			echo "\"$1\": pathname has embedded blanks, aborting." >&2
+		if [ "$arg" != "" ]; then
+			echo "$1: too many arguments, aborting." >&2
 			exit 1
 		fi
-		target="$1"
-		[ "$target" != "/" ] && target="${target%*/}"
-		[ "${target:0:1}" = "/" ] || usage_error
-		[ -d "$target" -a ! -h "$target" ] && method=online
-		[ -b "$target" ] && method=offline
-		[ "$method" = "" ] && usage_error
+		arg="$1"
 	fi
 	argc=$((argc - 1))
 	shift
 done
-[ "$target" = "" ] && usage_error
+[ "$arg" = "" ] && usage_error
+
+## Convert "$arg" into an absolute pathname target, with no symlinks or embedded blanks:
+target="`get_realpath "$arg"`"
+if [ "$target" = "" ]; then
+	echo "$arg: unable to determine full pathname, aborting." >&2
+	exit 1
+fi
+if [ "$target" != "${target##* }" ]; then
+	echo "\"$target\": pathname has embedded blanks, aborting." >&2
+	exit 1
+fi
+
+## First cut at online/offline determination, based on the target:
+##
+if [ -d "$target" ]; then
+	method=online
+elif [ -b "$target" ]; then
+	method=offline
+else
+	echo "$target: not a block device or mount point, aborting." >&2
+	exit 1
+fi
 
 ## Find the active mount-point (fsdir) associated with a device ($1: fsdev).
 ## This is complicated, and probably still buggy, because a single
@@ -161,11 +216,15 @@ if [ "$method" = "online" ]; then
 	fsdir="$target"
 	cd "$fsdir" || exit 1
 
-	## Figure out what device holds the filesystem.
-	fsdev="`get_fsdev $fsdir`"
-	if [ "$fsdev" = "" ]; then
-		echo "$fsdir: not found in /proc/mounts, aborting." >&2
-		exit 1
+	if [ "$fsdir" = "/" ]; then
+		fsdev="$rootdev"
+	else
+		## Figure out what device holds the filesystem.
+		fsdev="`get_fsdev $fsdir`"
+		if [ "$fsdev" = "" ]; then
+			echo "$fsdir: not found in /proc/mounts, aborting." >&2
+			exit 1
+		fi
 	fi
 
 	## The root filesystem may show up as the phoney "/dev/root" device
@@ -456,17 +515,14 @@ sync_disks
 echo "Beginning TRIM operations.."
 [ $verbose -gt 0 ] && echo "get_trimlist=$get_trimlist"
 
-$get_trimlist 2>/dev/null | $GAWK		\
-	-v method="$method"			\
-	-v rawdev="$rawdev"			\
-	-v dryrun="$dryrun"			\
-	-v fsoffset="$fsoffset"			\
-	-v verbose="$verbose"			\
-	-v xfs_blksects="$xfs_blksects"		\
-	-v xfs_agoffsets="$xfs_agoffsets"	\
-	-v trim="$fakeit $HDPARM --please-destroy-my-drive --trim-sector-ranges " '
-
 ## Begin gawk program
+GAWKPROG='
+	BEGIN {
+		if (xfs_agoffsets != "") {	## xfs ?
+			method = "xfs_offline"
+			agcount = split(xfs_agoffsets,agoffset," ");
+		}
+	}
 	function do_trim (  mbytes){
 		mbytes = "(" int((nsectors+1024)/2048) " MB)"
 		print dryrun "Trimming " nranges " free extents encompassing " nsectors " sectors " mbytes
@@ -479,7 +535,6 @@ $get_trimlist 2>/dev/null | $GAWK		\
 		}
 	}
 	function append_range (lba,count  ,this_count){
-		#printf "append_range(%u, %u)\n", lba, count
 		while (count > 0) {
 			this_count  = (count > 65535) ? 65535 : count
 			this_range  = lba ":" this_count " "
@@ -497,19 +552,12 @@ $get_trimlist 2>/dev/null | $GAWK		\
 			}
 		}
 	}
-	BEGIN {
-		if (xfs_agoffsets != "") {	## xfs ?
-			method = "xfs_offline"
-			agcount = split(xfs_agoffsets,agoffset," ");
-		}
-	}
 	(method == "online") {	## Output from "hdparm --fibmap", in absolute sectors:
 		if (NF == 4 && $2 ~ "^[0-9][0-9]*$")
 			append_range($2,$4)
 		next
 	}
 	(method == "xfs_offline") { ## Output from xfs_db:
-		#print "NF="NF", $1="$1", agcount="agcount", gensub=\""gensub("[0-9 ]","","g",$0)"\""
 		if (NF == 3 && gensub("[0-9 ]","","g",$0) == "" && $1 < agcount) {
 			lba   = agoffset[1 + $1] + ($2 * xfs_blksects) + fsoffset
 			count = $3 * xfs_blksects
@@ -540,5 +588,15 @@ $get_trimlist 2>/dev/null | $GAWK		\
 		exit err
 	}'
 ## End gawk program
+
+$get_trimlist 2>/dev/null | $GAWK		\
+	-v method="$method"			\
+	-v rawdev="$rawdev"			\
+	-v dryrun="$dryrun"			\
+	-v fsoffset="$fsoffset"			\
+	-v verbose="$verbose"			\
+	-v xfs_blksects="$xfs_blksects"		\
+	-v xfs_agoffsets="$xfs_agoffsets"	\
+	-v trim="$fakeit $HDPARM --please-destroy-my-drive --trim-sector-ranges " "$GAWKPROG"
 
 do_cleanup $?
