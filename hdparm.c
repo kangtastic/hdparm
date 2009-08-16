@@ -34,7 +34,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.24"
+#define VERSION "v9.25"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -1105,7 +1105,7 @@ static int trim_sectors (int fd, const char *devname, int nranges, void *data, _
 	data_bytes = data_sects * 512;
 
 	abort_if_not_full_device(fd, 0, devname, NULL);
-	printf("%s: trimming %llu sectors from %d ranges\n", devname, nsectors, nranges);
+	printf("trimming %llu sectors from %d ranges\n", nsectors, nranges);
 	fflush(stdout);
 
 	// Try and ensure that the system doesn't have the to-be-trimmed sectors in cache:
@@ -1157,12 +1157,19 @@ static int
 do_trim_from_stdin (int fd, const char *devname, void *id)
 {
 	__u64 *data, range, nsectors = 0, lba_limit;
-	unsigned int data_sects = 1024, data_bytes = data_sects * 512;
+	unsigned int max_kb, data_sects, data_bytes;
 	unsigned int total_ranges = 0, nranges = 0, max_ranges;
 	int err = 0;
 
 	id = get_identify_data(fd, id);
 	lba_limit = id ? get_lba_capacity(id) : (1ULL << 48) - 1;
+
+	err = sysfs_get_attr(fd, "queue/max_sectors_kb", "%u", &max_kb, NULL, 0);
+	if (err || max_kb == 0)
+		data_sects = 128;	/* "safe" default for most hardware */
+	else
+		data_sects = max_kb * 2;
+	data_bytes = data_sects * 512;
 
 	data = mmap(NULL, data_bytes, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
 	if (data == MAP_FAILED) {
@@ -2500,6 +2507,8 @@ get_longarg (void)
 		trim_from_stdin = 1;
 	} else if (0 == strcasecmp(name, "trim-sector-ranges")) {
 		int i, optional = 0, max_ranges = argc;
+		// FIXME Someday: this is silly, we should just mmap() the final form here,
+		// FIXME  instead of this intermediate data structure!
 		trim_sector_ranges = malloc(sizeof(struct sector_range_s) * max_ranges);
 		if (!trim_sector_ranges) {
 			int err = errno;

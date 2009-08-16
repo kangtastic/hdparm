@@ -1,3 +1,7 @@
+hdparm-9.25
+	- slightly tidier output from --trim-* commands
+	- restrict --trim-sector-ranges-stdin to limit from /sys/block/sd?/queue/max_sectors_kb
+	- updated wiper.sh to use --trim-sector-ranges-stdin rather than --trim-sector-ranges
 hdparm-9.24
 	- fixed malloc() bug in --trim-sector-ranges: it was allocating half the required size (oops).
 hdparm-9.23

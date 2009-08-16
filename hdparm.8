@@ -1,4 +1,4 @@
-.TH HDPARM 8 "August 2009" "Version 9.24"
+.TH HDPARM 8 "August 2009" "Version 9.25"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -599,7 +599,9 @@ Identical to
 .B --trim-sector-ranges
 above, except the list of lba:count pairs is read from stdin
 rather than being specified on the command line.  This can be used
-to avoid problems with excessively long command lines. 
+to avoid problems with excessively long command lines.  It also permits
+batching of many more sector ranges into single commands to the drive,
+up to the currently configured transfer limit (max_sectors_kb). 
 .TP
 .I -u
 Get/set interrupt-unmask flag for the drive.  A setting of

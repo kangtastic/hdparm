@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord
 
-VERSION=1.9
+VERSION=2.0
  
 # Copyright (C) 2009 Mark Lord.  All rights reserved.
 #
@@ -61,12 +61,12 @@ if [ `$ID -u` -ne 0 ]; then
 	exit 1
 fi
 
-## We need a very modern hdparm, for its --fallocate and --trim-sector-ranges flags:
-## Version 9.22 added an ext4/FIEMAP workaround and fsync() inside --fallocate
+## We need a very modern hdparm, for its --fallocate and --trim-sector-ranges-stdin flags:
+## Version 9.25 added automatic determination of safe max-size of TRIM commands.
 ##
 HDPVER=`$HDPARM -V | $GAWK '{gsub("[^0-9.]","",$2); if ($2 > 0) print ($2 * 100); else print 0; exit(0)}'`
-if [ $HDPVER -lt 924 ]; then
-	echo "$HDPARM: version >= 9.24 is required, aborting." >&2
+if [ $HDPVER -lt 925 ]; then
+	echo "$HDPARM: version >= 9.25 is required, aborting." >&2
 	exit 1
 fi
 
@@ -170,14 +170,19 @@ fi
 ## device can show up under *multiple* mount points in /proc/mounts.
 ##
 function get_fsdir(){
-	$GAWK -v p="$1" '{
-		if ($1 == p) {
-			if (rw != "rw") {
-				rw=substr($4,1,2)
-				r = $2
-			}
-		}
-	} END{print r}' < /proc/mounts
+	rw=""
+	r=""
+	while read -a m ; do
+		pdev="`get_realpath ${m[0]}`"
+		if [ "$pdev" = "$1" ]; then
+			if [ "$rw" != "rw" ]; then
+				rw="${m[3]:0:2}"
+				r="${m[1]}"
+			fi
+		fi
+		#echo "$pdev ${m[1]} ${m[2]} ${m[3]}"
+	done
+	echo -n "$r"
 }
 
 ## Find the device (fsdev) associated with a mount point ($1: fsdir).
@@ -185,7 +190,7 @@ function get_fsdir(){
 ## one from the last occurance in the list from /proc/mounts.
 ##
 function get_fsdev(){   ## from fsdir
-	$GAWK -v p="$1" '{if ($2 == p) r=$1} END{print r}' < /proc/mounts
+	get_realpath "`$GAWK -v p="$1" '{if ($2 == p) r=$1} END{print r}' < /proc/mounts`"
 }
 
 ## Find the r/w or r/o status (fsmode) of a filesystem mount point  ($1: fsdir)
@@ -207,6 +212,7 @@ function get_fsmode(){  ## from fsdir
 ## Use $DF to determine the device name associated with the root filesystem.
 ##
 rootdev="`($DF -P / | $GAWK '/^[/]/{print $1;exit}') 2>/dev/null`"
+rootdev="`get_realpath "$rootdev"`"
 
 ## The user gave us a directory (mount point) to TRIM,
 ## which implies that we will be doing an online TRIM
@@ -247,6 +253,7 @@ if [ "$method" = "online" ]; then
 
 	## If it is mounted read-only, we must switch to doing an "offline" trim of fsdev:
 	fsmode="`get_fsmode $fsdir`"
+	[ $verbose -gt 0 ] && echo "fsmode1: fsmode=$fsmode"
 	[ "$fsmode" = "read-only" ] && method=offline
 fi
 
@@ -268,6 +275,7 @@ if [ "$method" = "offline" ]; then
 	##
 	if [ "$fsdir" != "" ]; then
 		fsmode="`get_fsmode $fsdir`"
+		[ $verbose -gt 0 ] && echo "fsmode2: fsmode=$fsmode"
 		if [ "$fsmode" = "read-write" ]; then
 			method=online
 			cd "$fsdir" || exit 1
@@ -289,12 +297,16 @@ function get_major(){
 ## Note that some devices lie about support, and later reject the TRIM commands.
 ##
 rawdev=`echo $fsdev | $GAWK '{print gensub("[0-9]*$","","g")}'`
+rawdev="`get_realpath "$rawdev"`"
 if [ ! -e "$rawdev" ]; then
 	rawdev=""
 elif [ ! -b "$rawdev" ]; then
 	rawdev=""
 elif [ "`get_major $fsdev`" -ne "`get_major $rawdev`" ]; then  ## sanity check
 	rawdev=""
+elif [ "`get_major $fsdev`" -ne "8" ]; then ## "SCSI" drives only; no LVM confusion for now
+	echo "$rawdev: does not appear to be a SCSI/SATA SSD, aborting." >&2
+	exit 1
 elif ! $HDPARM -I $rawdev | $GREP -i '[ 	][*][ 	]*Data Set Management TRIM supported' &>/dev/null ; then
 	if [ "$commit" = "yes" ]; then
 		echo "$rawdev: DSM/TRIM command not supported, aborting." >&2
@@ -352,7 +364,11 @@ if [ "$method" = "online" ]; then
 
 	## Figure out if we have enough free space to even attempt TRIM:
 	##
-	freesize=`$DF -P -B 1024 . | $GAWK -v p="$fsdev" '{if ($1 == p) r=$4} END{print r}'`
+	freesize=`$DF -P -B 1024 . | $GAWK '{r=$4}END{print r}'`
+	if [ "$freesize" = "" ]; then
+		echo "$fsdev: unknown to '$DF'"
+		exit 1
+	fi
 	if [ $freesize -lt 15000 ]; then
 		echo "$target: filesystem too full for TRIM, aborting." >&2
 		exit 1
@@ -361,10 +377,10 @@ if [ "$method" = "online" ]; then
 	## Figure out how much space to --fallocate (later), keeping in mind
 	## that this is a live filesystem, and we need to leave some space for
 	## other concurrent activities, as well as for filesystem overhead (metadata).
-	## So, reserve at least 1% (3% on btrfs) or 7500 KB, whichever is larger:
+	## So, reserve at least 1% (35% on btrfs) or 7500 KB, whichever is larger:
 	##
 	reserved=$((freesize / 100))
-	[ "$fstype" = "btrfs" ] && reserved=$((reserved * 3))
+	[ "$fstype" = "btrfs" ] && reserved=$((reserved * 35))
 	[ $reserved -lt 7500 ] && reserved=7500
 	[ $verbose -gt 0 ] && echo "freesize = ${freesize} KB, reserved = ${reserved} KB"
 	tmpsize=$((freesize - reserved))
@@ -440,11 +456,10 @@ if [ "$commit" = "yes" ]; then
 		echo "Aborting." >&2
 		exit 1
 	fi
-	dryrun=""
+	TRIM="$HDPARM --please-destroy-my-drive --trim-sector-ranges-stdin $rawdev"
 else
 	echo "This will be a DRY-RUN only.  Use --commit to do it for real."
-	fakeit="# "
-	dryrun="(DRY-RUN) "
+	TRIM="$GAWK {}"
 fi
 
 ## Useful in a few places later on:
@@ -515,44 +530,27 @@ fi
 ##   2. The hdparm command lines are limited to under 64KB on many systems.
 ##
 sync_disks
-echo "Beginning TRIM operations.."
+if [ "$commit" = "yes" ]; then
+	echo "Beginning TRIM operations.."
+else
+	echo "Simulating TRIM operations.."
+fi
 [ $verbose -gt 0 ] && echo "get_trimlist=$get_trimlist"
 
 ## Begin gawk program
 GAWKPROG='
 	BEGIN {
-		if (xfs_agoffsets != "") {	## xfs ?
+		if (xfs_agoffsets != "") {
 			method = "xfs_offline"
 			agcount = split(xfs_agoffsets,agoffset," ");
-		}
-	}
-	function do_trim (  mbytes){
-		mbytes = "(" int((nsectors+1024)/2048) " MB)"
-		print dryrun "Trimming " nranges " free extents encompassing " nsectors " sectors " mbytes
-		if (verbose)
-			print dryrun trim ranges rawdev
-		err = system(trim ranges rawdev " >/dev/null")
-		if (err) {
-			printf "TRIM command failed, err=%d\n",err > "/dev/stderr"
-			exit err
 		}
 	}
 	function append_range (lba,count  ,this_count){
 		while (count > 0) {
 			this_count  = (count > 65535) ? 65535 : count
-			this_range  = lba ":" this_count " "
-			len        += length(this_range)
-			ranges      = ranges this_range
-			nsectors   += this_count
+			printf "%u:%u ", lba, this_count
 			lba        += this_count
 			count      -= this_count
-			if (len > 64000 || ++nranges >= (255 * 512 / 8)) {
-				do_trim()
-				ranges   = ""
-				len      = 0
-				nranges  = 0
-				nsectors = 0
-			}
 		}
 	}
 	(method == "online") {	## Output from "hdparm --fibmap", in absolute sectors:
@@ -568,7 +566,7 @@ GAWKPROG='
 		}
 		next
 	}
-	/^Block size: *[0-9]/ {	## First stage output from dumpe2fs:
+	/^Block size: *[1-9]/ {	## First stage output from dumpe2fs:
 		blksects = $NF / 512
 		next
 	}
@@ -603,11 +601,10 @@ GAWKPROG='
 $get_trimlist 2>/dev/null | $GAWK		\
 	-v method="$method"			\
 	-v rawdev="$rawdev"			\
-	-v dryrun="$dryrun"			\
 	-v fsoffset="$fsoffset"			\
 	-v verbose="$verbose"			\
 	-v xfs_blksects="$xfs_blksects"		\
 	-v xfs_agoffsets="$xfs_agoffsets"	\
-	-v trim="$fakeit $HDPARM --please-destroy-my-drive --trim-sector-ranges " "$GAWKPROG"
+	"$GAWKPROG" | $TRIM
 
 do_cleanup $?

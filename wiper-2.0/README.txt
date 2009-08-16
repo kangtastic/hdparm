@@ -11,15 +11,14 @@ In some cases, this can restore a sluggish SSD to nearly-new speeds again.
 
 This script may be EXTREMELY HAZARDOUS TO YOUR DATA.
 
-It does work for me here, on a single pre-production SATA SSD.
-But it has not yet been throroughly tested by others.
+It does work for me here, but it has not yet been exhaustively tested by others.
 
 Please back-up your data to a *different* physical drive before trying it.
 And if you are at all worried, then DO NOT USE THIS SCRIPT!!
 
 Once there are drives in the marketplace with production firmware that supports
 the SATA DSM TRIM command, then this will get tested a bit more over time.
-When that happens, it will be moved out of this directory and installed alongside
+As that happens, it will be moved out of this directory and installed alongside
 the hdparm executable, probably under /sbin or /usr/sbin.
 
 Until then, DO NOT USE THIS SCRIPT if you cannot afford losing your data!!
@@ -59,4 +58,8 @@ are missing support for this, so hdparm will fall back to the older
 and slower FIBMAP call, causing wiper.sh to take much longer to run.
 The older call has other limitations, such as failing on really large
 files or huge disks, so use of FIEMAP really is preferred.
+
+As of August 16, a similar patch has now been backported to the -stable
+streams of most recent Linux kernel versions.  So update your kernel
+and this functionality will already be included.
 
