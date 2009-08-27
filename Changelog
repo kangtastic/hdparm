@@ -1,3 +1,9 @@
+hdparm-9.26
+	- wiper.sh updated to wiper-2.2
+	- zero-day bugfix for "hdparm -i" on model names with embedded blanks
+	- bugfix for --security-erase-enhanced, courtesy of Cyril.Guyot@hitachigst.com
+	- set _FILE_OFFSET_BITS in geom.c (still need to do this in hdparm.c someday)
+	- added reporting for "Deterministic read ZEROs after TRIM" feature
 hdparm-9.25
 	- slightly tidier output from --trim-* commands
 	- restrict --trim-sector-ranges-stdin to limit from /sys/block/sd?/queue/max_sectors_kb

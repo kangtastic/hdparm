@@ -34,7 +34,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.25"
+#define VERSION "v9.26"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -48,10 +48,10 @@ extern const char *minor_str[];
 #define TIMING_BUF_BYTES	(TIMING_BUF_MB * 1024 * 1024)
 
 #ifndef ATA_OP_SECURITY_FREEZE_LOCK
-	#define ATA_OP_SECURITY_SET_PASS		0xF1
+	#define ATA_OP_SECURITY_SET_PASS	0xF1
 	#define ATA_OP_SECURITY_UNLOCK		0xF2
 	#define ATA_OP_SECURITY_ERASE_PREPARE	0xF3
-	#define ATA_OP_SECURITY_ERASE_UNIT		0xF4
+	#define ATA_OP_SECURITY_ERASE_UNIT	0xF4
 	#define ATA_OP_SECURITY_FREEZE_LOCK	0xF5
 	#define ATA_OP_SECURITY_DISABLE		0xF6
 #endif
@@ -395,8 +395,8 @@ static char *strip (char *s)
 	char *e;
 
 	while (*s == ' ') ++s;
-	for (e = s; *e && *++e != ' ';);
-	*e = '\0';
+	if (*s)
+		for (e = s + strlen(s); *--e == ' '; *e = '\0');
 	return s;
 }
 
@@ -721,7 +721,7 @@ do_set_security (int fd)
 	switch (security_command) {
 		case ATA_OP_SECURITY_ERASE_UNIT:
 			description = "SECURITY_ERASE";
-			data[0] |= (enhanced_erase & 0x02);
+			data[0] |= enhanced_erase ? 0x02 : 0;
 			break;
 		case ATA_OP_SECURITY_DISABLE:
 			description = "SECURITY_DISABLE";
@@ -1140,6 +1140,7 @@ static void do_trim_sector_ranges (int fd, const char *devname, int nranges, str
 		perror("mmap(MAP_ANONYMOUS)");
 		exit(err);
 	}
+	// FIXME: handle counts > 65535 here!
 	for (i = 0; i < nranges; ++i) {
 		nsectors += sr->nsectors;
 		range = sr->nsectors;

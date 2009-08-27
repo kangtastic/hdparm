@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord
 
-VERSION=2.0
+VERSION=2.2
  
 # Copyright (C) 2009 Mark Lord.  All rights reserved.
 #
@@ -22,7 +22,7 @@ VERSION=2.0
 # along with this program; if not, write to the Free Software Foundation,
 # Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-export LANG=en_US.utf-8
+export LANG=C
 
 ## Things we (may) need on various paths through this script:
 ##
@@ -33,6 +33,8 @@ HDPARM=/sbin/hdparm
 GAWK=/usr/bin/gawk
 BLKID=/sbin/blkid
 GREP=/bin/grep
+FIND=/usr/bin/find
+STAT=/usr/bin/stat
 ID=/usr/bin/id
 LS=/bin/ls
 DF=/bin/df
@@ -52,7 +54,7 @@ function require_prog(){
 
 echo
 echo "${0##*/}: Linux SATA SSD TRIM utility, version $VERSION, by Mark Lord."
-require_prog $HDPARM $GAWK $BLKID $GREP $ID $LS $DF $RM
+require_prog $HDPARM $GAWK $BLKID $GREP $ID $LS $DF $RM || exit 1
 
 ## I suppose this will confuse the three SELinux users out there:
 ##
@@ -143,11 +145,26 @@ while [ $argc -gt 0 ]; do
 done
 [ "$arg" = "" ] && usage_error
 
+function get_devpath(){
+	require_prog $FIND $STAT || exit 1
+	dir="$1"
+	kdev=`$STAT --format="%04D" "$dir" 2>/dev/null`
+	[ "$kdev" = "" ] && exit 1
+	major=$((0x${kdev:0:2}))
+	minor=$((0x${kdev:2:2}))
+	
+	$FIND /dev -xdev -type b -exec $LS -ln {} \; | $GAWK -v major="$major," -v minor="$minor" \
+		'($5 == major && $6 == minor){r=$NF}END{print r}'
+}
+
 ## Convert "$arg" into an absolute pathname target, with no symlinks or embedded blanks:
 target="`get_realpath "$arg"`"
 if [ "$target" = "" ]; then
-	echo "$arg: unable to determine full pathname, aborting." >&2
-	exit 1
+	[ "$arg" = "/dev/root" ] && target="`get_devpath /`"
+	if [ "$target" = "" ]; then
+		echo "$arg: unable to determine full pathname, aborting." >&2
+		exit 1
+	fi
 fi
 if [ "$target" != "${target##* }" ]; then
 	echo "\"$target\": pathname has embedded blanks, aborting." >&2
@@ -173,7 +190,8 @@ function get_fsdir(){
 	rw=""
 	r=""
 	while read -a m ; do
-		pdev="`get_realpath ${m[0]}`"
+		pdev="${m[0]}"
+		[ "$pdev" = "$1" ] || pdev="`get_realpath "$pdev"`"
 		if [ "$pdev" = "$1" ]; then
 			if [ "$rw" != "rw" ]; then
 				rw="${m[3]:0:2}"
@@ -211,8 +229,15 @@ function get_fsmode(){  ## from fsdir
 
 ## Use $DF to determine the device name associated with the root filesystem.
 ##
-rootdev="`($DF -P / | $GAWK '/^[/]/{print $1;exit}') 2>/dev/null`"
+## This *usually* works, but on some distros it just returns "/dev/root",
+## and "/dev/root" does not actually exist.  We leave it like that for now,
+## because that's the pattern such systems also use in /proc/mounts.
+## Later, at time of use, we'll try harder to find the real rootdev.
+##
+rdev="`($DF -P / | $GAWK '/^[/]/{print $1;exit}') 2>/dev/null`"
 rootdev="`get_realpath "$rootdev"`"
+[ "$rootdev" = "" ] && rootdev=$rdev
+[ $verbose -gt 0 ] && echo "rootdev=$rootdev rdev=$rdev"
 
 ## The user gave us a directory (mount point) to TRIM,
 ## which implies that we will be doing an online TRIM
@@ -237,14 +262,22 @@ if [ "$method" = "online" ]; then
 
 	## The root filesystem may show up as the phoney "/dev/root" device
 	## in /proc/mounts (ugh).  So if we see that, then substitute the rootdev
-	## that $DF gave us earlier.
+	## that $DF gave us earlier.  But $DF may have the same problem (double ugh).
 	##
 	[ ! -e "$fsdev" -a "$fsdev" = "/dev/root" ] && fsdev="$rootdev"
 
 	## Ensure that fsdev exists and is a block device:
 	if [ ! -e "$fsdev" ]; then
-		echo "$fsdev: not found" >&2
-		exit 1
+		if [ "$fsdev" != "/dev/root" ]; then
+			echo "$fsdev: not found" >&2
+			exit 1
+		fi
+		rdev="`get_devpath /`"
+		if [ "$rdev" = "" ]; then
+			echo "$fsdev: not found" >&2
+			exit 1
+		fi
+		fsdev="$rdev"
 	fi
 	if [ ! -b "$fsdev" ]; then
 		echo "$fsdev: not a block device" >&2
@@ -252,7 +285,7 @@ if [ "$method" = "online" ]; then
 	fi
 
 	## If it is mounted read-only, we must switch to doing an "offline" trim of fsdev:
-	fsmode="`get_fsmode $fsdir`"
+	fsmode="`get_fsmode $fsdir`" || exit 1
 	[ $verbose -gt 0 ] && echo "fsmode1: fsmode=$fsmode"
 	[ "$fsmode" = "read-only" ] && method=offline
 fi
@@ -264,9 +297,15 @@ if [ "$method" = "offline" ]; then
 	## We might already have fsdev/fsdir from above; if not, we need to find them.
 	if [ "$fsdev" = "" -o "$fsdir" = "" ]; then
 		fsdev="$target"
-		fsdir="`get_fsdir $fsdev`"
+		fsdir="`get_fsdir "$fsdev" < /proc/mounts`"
 		## More weirdness for /dev/root in /proc/mounts:
-		[ "$fsdir" = "" -a "$fsdev" = "$rootdev" ] && fsdir="`get_fsdir /dev/root`"
+		if [ "$fsdir" = "" -a "$fsdev" = "$rootdev" ]; then
+			fsdir="`get_fsdir /dev/root < /proc/mounts`"
+			if [ "$fsdir" = "" ]; then
+				rdev="`get_devpath /`"
+				[ "$rdev" != "" ] && fsdir="`get_fsdir "$rdev" < /proc/mounts`"
+			fi
+		fi
 	fi
 
 	## If the filesystem is truly not-mounted, then fsdir will still be empty here.
@@ -274,7 +313,7 @@ if [ "$method" = "offline" ]; then
 	## to switch gears and do an "online" TRIM instead of an "offline" TRIM.
 	##
 	if [ "$fsdir" != "" ]; then
-		fsmode="`get_fsmode $fsdir`"
+		fsmode="`get_fsmode $fsdir`" || exit 1
 		[ $verbose -gt 0 ] && echo "fsmode2: fsmode=$fsmode"
 		if [ "$fsmode" = "read-write" ]; then
 			method=online
@@ -394,7 +433,7 @@ else
 	##
 	get_trimlist=""
 	if [ "$fstype" = "ext2" -o "$fstype" = "ext3" -o "$fstype" = "ext4" ]; then
-		require_prog $DUMPE2FS
+		require_prog $DUMPE2FS || exit 1
 		fstate="`$DUMPE2FS $fsdev 2>/dev/null | $GAWK '/^[Ff]ilesystem state:/{print $NF}' 2>/dev/null`"
 		if [ "$fstate" != "clean" ]; then
 			echo "$target: filesystem not clean, please run \"e2fsck $fsdev\" first, aborting." >&2
@@ -402,7 +441,7 @@ else
 		fi
 		get_trimlist="$DUMPE2FS $fsdev"
 	elif [ "$fstype" = "xfs" ]; then
-		require_prog $XFS_REPAIR $XFS_DB
+		require_prog $XFS_REPAIR $XFS_DB || exit 1
 		if ! $XFS_REPAIR -n "$fsdev" &>/dev/null ; then
 			echo "$fsdev: filesystem not clean, please run \"xfs_repair $fsdev\" first, aborting." >&2
 			exit 1
@@ -450,7 +489,20 @@ echo "Preparing for $method TRIM of free space on $fsdev ($mountstatus)."
 ## If they specified "--commit" on the command line, then prompt for confirmation first:
 ##
 if [ "$commit" = "yes" ]; then
-	echo -n "This operation could destroy your data.  Are you sure (y/N)? " >/dev/tty
+	echo >/dev/tty
+	## Neither FIEMAP nor FIBMAP are safe on btrfs with mulitiple devices; non-detectable here.. ugh.
+	if [ "$fstype" = "btrfs" ]; then
+		echo "btrfs is experimental, will silently corrupt data when than one device is involved," >/dev/tty
+		echo "and provides no means for this script to determine which devices are in use." >/dev/tty
+		echo -n "Do you want to risk destroying all of your data (y/N)? " >/dev/tty
+		read yn < /dev/tty
+		if [ "$yn" != "y" -a "$yn" != "Y" ]; then
+			echo "Aborting." >&2
+			exit 1
+		fi
+		echo >/dev/tty
+	fi
+	echo -n "This operation could silently destroy your data.  Are you sure (y/N)? " >/dev/tty
 	read yn < /dev/tty
 	if [ "$yn" != "y" -a "$yn" != "Y" ]; then
 		echo "Aborting." >&2

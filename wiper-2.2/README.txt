@@ -40,6 +40,30 @@ though the difference is small.
 
 ==================================================
 
+btrfs -- DO NOT USE !!!
+
+Due to end-user demand, this script can also now TRIM some mounted btrfs filesystems.
+
+But btrfs breaks the Linux filesystem model in many ways, making it rather dangerous
+to your data to try and TRIM it.  It implements it's own internal multiple-device
+layer, similar to DM/MD/VFS, but without any indication to external utilities like wiper.sh.
+As a result, detection of the underlying device for the filesystem is haphazard at best,
+and this could cause wiper.sh to destroy data on whatever device it thinks is the correct one.
+
+Also, because of the built-in duplication of multiple-device support, the FIBMAP and FIEMAP
+ioctl()s will work incorrectly on btrfs when more than a single device is involved.
+This means that btrfs will mislead the wiper.sh script, causing it to TRIM the WRONG sectors,
+destroying valuable data, programs, and filesystem metadata.  You will lose everything.
+
+Currently, it is mostly (but not completely) safe to run wiper.sh on a mounted btrfs
+filesystem which is comprised of a single underlying device partition.  This usually works
+without trouble.  But btrfs provides no means to detect this case, so wiper.sh is unable
+to safeguard against corruption in the cases where more than one device partition is used.
+
+btrfs is an experimental beta with serious issues; use ext4 or xfs instead.
+
+==================================================
+
 The sil24_trim_protocol_fix.patch file in this directory is a kernel
 patch for all recent Linux kernel versions up to and including 2.6.31.
 

@@ -6,6 +6,7 @@
  * (your choice) the GNU General Public License version 2,
  * or a BSD style license.
  */
+#define _FILE_OFFSET_BITS 64
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>

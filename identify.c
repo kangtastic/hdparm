@@ -331,7 +331,7 @@ static const char unknown[8] = "obsolete";
 
 static const char *feat_word69_str[16] = { 
 	"CFast specification support",			/* word 69 bit 15 */
-	"Deterministic read after TRIM",		/* word 69 bit 14 */
+	"Deterministic read data after TRIM",		/* word 69 bit 14 */
 	"Long physical sector diagnostics",		/* word 69 bit 13 */
 	"DEVICE CONFIGURATION SET/IDENTIFY DMA commands", /* word 69 bit 12 */
 	"READ BUFFER DMA command",			/* word 69 bit 11 */
@@ -340,7 +340,7 @@ static const char *feat_word69_str[16] = {
 	"DOWNLOAD MICROCODE DMA command",		/* word 69 bit  8 */
 	"reserved 69[7]",				/* word 69 bit  7 */
 	"reserved 69[6]",				/* word 69 bit  6 */
-	"reserved 69[5]",				/* word 69 bit  5 */
+	"Deterministic read ZEROs after TRIM",		/* word 69 bit  5 */
 	"reserved 69[4]",				/* word 69 bit  4 */
 	"reserved 69[3]",				/* word 69 bit  3 */
 	"reserved 69[2]",				/* word 69 bit  2 */
@@ -1204,10 +1204,22 @@ void identify (__u16 *id_supplied)
 		if (val[SCT_SUPP] & 0x1)
 			print_features(val[SCT_SUPP], val[SCT_SUPP] & 0x3f, feat_sct_str);
 	}
-	if (val[169] & 1 && val[169] != 0xffff)
-		printf("\t   *\tData Set Management TRIM supported\n");
-	if (like_std > 6)
-		print_features(val[69], val[69], feat_word69_str);
+	if (like_std > 6) {
+		const __u16 trimd = 1<<14;	/* deterministic read data after TRIM */
+		const __u16 trimz = 1<<5;	/* deterministic read ZEROs after TRIM */
+		__u16 word69 = val[69] & ~(trimz | trimd); /* TRIM bits require special interpretation */
+		print_features(word69, word69, feat_word69_str);
+		if (val[169] & 1 && val[169] != 0xffff) { /* supports TRIM ? */
+			printf("\t   *\tData Set Management TRIM supported\n");
+			if (val[69] & trimd) { /* Deterministic TRIM support */
+				if (val[69] & trimz)
+					print_features(trimz, trimz, feat_word69_str);
+				else
+					print_features(trimd, trimd, feat_word69_str);
+			}
+		}
+		
+	}
 
 	if (is_cfa) {
 		unsigned int mode, max, selected;
