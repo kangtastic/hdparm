@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord
 
-VERSION=2.2
+VERSION=2.5
  
 # Copyright (C) 2009 Mark Lord.  All rights reserved.
 #
@@ -24,37 +24,77 @@ VERSION=2.2
 
 export LANG=C
 
-## Things we (may) need on various paths through this script:
+## The usual terse usage information:
 ##
-XFS_REPAIR=/sbin/xfs_repair
-XFS_DB=/usr/sbin/xfs_db
-DUMPE2FS=/sbin/dumpe2fs
-HDPARM=/sbin/hdparm
-GAWK=/usr/bin/gawk
-BLKID=/sbin/blkid
-GREP=/bin/grep
-FIND=/usr/bin/find
-STAT=/usr/bin/stat
-ID=/usr/bin/id
-LS=/bin/ls
-DF=/bin/df
-RM=/bin/rm
-
-## Check for needed programs and give a nicer error message than we'd otherwise see:
-##
-function require_prog(){
-	while [ "$1" != "" ]; do
-		if [ ! -x "$1" ]; then
-			echo "$1: needed but not found, aborting." >&2
-			exit 1
-		fi
-		shift
-	done
+function usage_error(){
+	echo >&2
+	echo "Linux tune-up (TRIM) utility for SATA SSDs"
+	echo "Usage:  $0 [--verbose] [--commit] <mount_point|block_device>" >&2
+	echo "   Eg:  $0 /dev/sda1" >&2
+	echo >&2
+	exit 1
 }
+
+## Parameter parsing for the main script.
+## Yeah, we could use getopt here instead, but what fun would that be?
+##
 
 echo
 echo "${0##*/}: Linux SATA SSD TRIM utility, version $VERSION, by Mark Lord."
-require_prog $HDPARM $GAWK $BLKID $GREP $ID $LS $DF $RM || exit 1
+
+verbose=0
+commit=""
+argc=$#
+arg=""
+while [ $argc -gt 0 ]; do
+	if [ "$1" = "--commit" ]; then
+		commit=yes
+	elif [ "$1" = "--verbose" ]; then
+		verbose=1
+	elif [ "$1" = "" ]; then
+		usage_error
+	else
+		if [ "$arg" != "" ]; then
+			echo "$1: too many arguments, aborting." >&2
+			exit 1
+		fi
+		arg="$1"
+	fi
+	argc=$((argc - 1))
+	shift
+done
+[ "$arg" = "" ] && usage_error
+
+## Find a required program, or else give a nicer error message than we'd otherwise see:
+##
+function find_prog(){
+	prog="$1"
+	if [ ! -x "$prog" ]; then
+		prog="${prog##*/}"
+		p=`type -f -P "$prog" 2>/dev/null`
+		if [ "$p" = "" ]; then
+			echo "$1: needed but not found, aborting." >&2
+			exit 1
+		fi
+		prog="$p"
+		[ $verbose -gt 0 ] && echo "  --> using $prog instead of $1" >&2
+	fi
+	echo "$prog"
+}
+
+## Ensure we have most of the necessary utilities available before trying to proceed:
+##
+hash -r  ## Refresh bash's cached PATH entries
+HDPARM=`find_prog /sbin/hdparm`	|| exit 1
+FIND=`find_prog /usr/bin/find`	|| exit 1
+STAT=`find_prog /usr/bin/stat`	|| exit 1
+GAWK=`find_prog /usr/bin/gawk`	|| exit 1
+BLKID=`find_prog /sbin/blkid`	|| exit 1
+GREP=`find_prog /bin/grep`	|| exit 1
+ID=`find_prog /usr/bin/id`	|| exit 1
+LS=`find_prog /bin/ls`		|| exit 1
+DF=`find_prog /bin/df`		|| exit 1
+RM=`find_prog /bin/rm`		|| exit 1
 
 ## I suppose this will confuse the three SELinux users out there:
 ##
@@ -108,51 +148,12 @@ function get_realpath(){
 	done
 }
 
-## The usual terse usage information:
-##
-function usage_error(){
-	echo >&2
-	echo "Linux tune-up (TRIM) utility for SATA SSDs"
-	echo "Usage:  $0 [--verbose] [--commit] <mount_point|block_device>" >&2
-	echo "   Eg:  $0 /dev/sda1" >&2
-	echo >&2
-	exit 1
-}
-
-## Parameter parsing for the main script.
-## Yeah, we could use getopt here instead, but what fun would that be?
-##
-verbose=0
-commit=""
-argc=$#
-arg=""
-while [ $argc -gt 0 ]; do
-	if [ "$1" = "--commit" ]; then
-		commit=yes
-	elif [ "$1" = "--verbose" ]; then
-		verbose=1
-	elif [ "$1" = "" ]; then
-		usage_error
-	else
-		if [ "$arg" != "" ]; then
-			echo "$1: too many arguments, aborting." >&2
-			exit 1
-		fi
-		arg="$1"
-	fi
-	argc=$((argc - 1))
-	shift
-done
-[ "$arg" = "" ] && usage_error
-
 function get_devpath(){
-	require_prog $FIND $STAT || exit 1
 	dir="$1"
 	kdev=`$STAT --format="%04D" "$dir" 2>/dev/null`
 	[ "$kdev" = "" ] && exit 1
 	major=$((0x${kdev:0:2}))
 	minor=$((0x${kdev:2:2}))
-	
 	$FIND /dev -xdev -type b -exec $LS -ln {} \; | $GAWK -v major="$major," -v minor="$minor" \
 		'($5 == major && $6 == minor){r=$NF}END{print r}'
 }
@@ -171,7 +172,7 @@ if [ "$target" != "${target##* }" ]; then
 	exit 1
 fi
 
-## First cut at online/offline determination, based on the target:
+## Take a first cut at online/offline determination, based on the target:
 ##
 if [ -d "$target" ]; then
 	method=online
@@ -392,10 +393,20 @@ function xfs_trimlist(){
 xfs_agoffsets=""
 xfs_blksects=0
 
+## We used to allow single-drive btrfs here, but it stopped working in linux-2.6.31,
+## and Chris Mason says "unsafe at any speed" really.  So it's been dropped now.
+##
+if [ "$fstype" = "btrfs" ]; then  ## hdparm --fibmap fails, due to fake 0:xx device nodes
+	echo "$target: btrfs filesystem type not supported (cannot determine physical devices), aborting." >&2
+	exit 1
+fi
+
 ## Now figure out whether we can actually do TRIM on this type of filesystem:
 ##
 if [ "$method" = "online" ]; then
-
+	## Print sensible error messages for some common situations,
+	## rather than failing with more confusing messages later on..
+	##
 	if [ "$fstype" = "ext2" -o "$fstype" = "ext3" ]; then  ## No --fallocate support
 		echo "$target: cannot TRIM $fstype filesystem when mounted read-write, aborting." >&2
 		exit 1
@@ -416,10 +427,9 @@ if [ "$method" = "online" ]; then
 	## Figure out how much space to --fallocate (later), keeping in mind
 	## that this is a live filesystem, and we need to leave some space for
 	## other concurrent activities, as well as for filesystem overhead (metadata).
-	## So, reserve at least 1% (35% on btrfs) or 7500 KB, whichever is larger:
+	## So, reserve at least 1% or 7500 KB, whichever is larger:
 	##
 	reserved=$((freesize / 100))
-	[ "$fstype" = "btrfs" ] && reserved=$((reserved * 35))
 	[ $reserved -lt 7500 ] && reserved=7500
 	[ $verbose -gt 0 ] && echo "freesize = ${freesize} KB, reserved = ${reserved} KB"
 	tmpsize=$((freesize - reserved))
@@ -427,13 +437,13 @@ if [ "$method" = "online" ]; then
 	get_trimlist="$HDPARM --fibmap $tmpfile"
 else
 	## We can only do offline TRIM on filesystems that we "know" about here.
-	## Currently, this includes the ext2/3/4 family, and xfs.
+	## Currently, this includes the ext2/3/4 family, xfs, and reiserfs.
 	## The first step for any of these is to ensure that the filesystem is "clean",
 	## and immediately abort if it is not.
 	##
 	get_trimlist=""
 	if [ "$fstype" = "ext2" -o "$fstype" = "ext3" -o "$fstype" = "ext4" ]; then
-		require_prog $DUMPE2FS || exit 1
+		DUMPE2FS=`find_prog /sbin/dumpe2fs` || exit 1
 		fstate="`$DUMPE2FS $fsdev 2>/dev/null | $GAWK '/^[Ff]ilesystem state:/{print $NF}' 2>/dev/null`"
 		if [ "$fstate" != "clean" ]; then
 			echo "$target: filesystem not clean, please run \"e2fsck $fsdev\" first, aborting." >&2
@@ -441,7 +451,8 @@ else
 		fi
 		get_trimlist="$DUMPE2FS $fsdev"
 	elif [ "$fstype" = "xfs" ]; then
-		require_prog $XFS_REPAIR $XFS_DB || exit 1
+		XFS_DB=`find_prog /sbin/xfs_db` || exit 1
+		XFS_REPAIR=`find_prog /sbin/xfs_repair` || exit 1
 		if ! $XFS_REPAIR -n "$fsdev" &>/dev/null ; then
 			echo "$fsdev: filesystem not clean, please run \"xfs_repair $fsdev\" first, aborting." >&2
 			exit 1
@@ -473,6 +484,14 @@ else
 		[ "$blksize" = "" -o "$blksize" = "0" ] && xfs_abort "block size"
 		xfs_blksects=$((blksize/512))
 		get_trimlist="xfs_trimlist"
+	elif [ "$fstype" = "reiserfs" ]; then
+		DEBUGREISERFS=`find_prog /sbin/debugreiserfs` || exit 1
+		( $DEBUGREISERFS $fsdev | grep '^Filesystem state:.consistent' ) &> /dev/null
+		if [ $? -ne 0 ]; then
+			echo "Please run fsck.reiserfs first, aborting." >&2
+			exit 1
+		fi
+		get_trimlist="$DEBUGREISERFS -m $fsdev"
 	fi
 	if [ "$get_trimlist" = "" ]; then
 		echo "$target: offline TRIM not supported for $fstype filesystems, aborting." >&2
@@ -490,18 +509,6 @@ echo "Preparing for $method TRIM of free space on $fsdev ($mountstatus)."
 ##
 if [ "$commit" = "yes" ]; then
 	echo >/dev/tty
-	## Neither FIEMAP nor FIBMAP are safe on btrfs with mulitiple devices; non-detectable here.. ugh.
-	if [ "$fstype" = "btrfs" ]; then
-		echo "btrfs is experimental, will silently corrupt data when than one device is involved," >/dev/tty
-		echo "and provides no means for this script to determine which devices are in use." >/dev/tty
-		echo -n "Do you want to risk destroying all of your data (y/N)? " >/dev/tty
-		read yn < /dev/tty
-		if [ "$yn" != "y" -a "$yn" != "Y" ]; then
-			echo "Aborting." >&2
-			exit 1
-		fi
-		echo >/dev/tty
-	fi
 	echo -n "This operation could silently destroy your data.  Are you sure (y/N)? " >/dev/tty
 	read yn < /dev/tty
 	if [ "$yn" != "y" -a "$yn" != "Y" ]; then
@@ -576,10 +583,10 @@ fi
 ## extract the trimable lba-ranges (extents) and batch them together
 ## into huge --trim-sector-ranges calls.
 ##
-## We are limited by two things when doing this:
+## We are limited by at least one thing when doing this:
 ##   1. Some device drivers may not support more than 255 sectors
-##      full of lba:count range data, and
-##   2. The hdparm command lines are limited to under 64KB on many systems.
+##      full of lba:count range data per TRIM command.
+## The latest hdparm versions now take care of that automatically.
 ##
 sync_disks
 if [ "$commit" = "yes" ]; then
@@ -598,11 +605,14 @@ GAWKPROG='
 		}
 	}
 	function append_range (lba,count  ,this_count){
+		nsectors += count;
 		while (count > 0) {
 			this_count  = (count > 65535) ? 65535 : count
 			printf "%u:%u ", lba, this_count
+			#if (verbose) printf "%u:%u ", lba, this_count > "/dev/stderr"
 			lba        += this_count
 			count      -= this_count
+			nranges++;
 		}
 	}
 	(method == "online") {	## Output from "hdparm --fibmap", in absolute sectors:
@@ -637,20 +647,47 @@ GAWKPROG='
 					append_range(lba,count)
 				} else if (f[i] ~ "^[1-9][0-9]*$") {
 					lba   = (f[i] * blksects) + fsoffset
-					count = blksects;
+					count = blksects
 					append_range(lba,count)
 				}
 			}
+			next
+		}
+	}
+	/^Reiserfs super block/ {
+		method = "reiserfs"
+		next
+	}
+	/^Blocksize: / {
+		if (method == "reiserfs") {
+			blksects = $2 / 512
+			next
+		}
+	}
+	/^#[0-9][0-9]*:.*Free[(]/ { ## debugreiserfs
+		if (method == "reiserfs" && blksects > 0) {
+			n = split($0,f)
+			for (i = 4; i <= n; ++i) {
+				if (f[i] ~ "^ *Free[(]") {
+					if (2 == split(gensub("[^-0-9]","","g",f[i]),b,"-")) {
+						lba = (b[1] * blksects) + fsoffset
+						count = (b[2] - b[1] + 1) * blksects
+						append_range(lba, count)
+					}
+				}
+			}
+			next
 		}
 	}
 	END {
-		if (err == 0 && nranges > 0)
-			do_trim()
+		if (err == 0 && commit != "yes")
+			printf "(dry-run) trimming %u sectors from %u ranges\n", nsectors, nranges > "/dev/stderr"
 		exit err
 	}'
 ## End gawk program
 
 $get_trimlist 2>/dev/null | $GAWK		\
+	-v commit="$commit"			\
 	-v method="$method"			\
 	-v rawdev="$rawdev"			\
 	-v fsoffset="$fsoffset"			\

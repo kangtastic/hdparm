@@ -114,32 +114,33 @@ enum {
 	TASKFILE_DPHASE_PIO_OUT	= 4,	/* ide: TASKFILE_OUT */
 };
 
-struct reg_flags {
+union reg_flags {
+	unsigned all				: 16;
 	union {
-	unsigned lob_all		: 8;
-	struct {
-		unsigned data		: 1;
-		unsigned feat		: 1;
-		unsigned lbal		: 1;
-		unsigned nsect		: 1;
-		unsigned lbam		: 1;
-		unsigned lbah		: 1;
-		unsigned dev		: 1;
-		unsigned command	: 1;
-	} lob;
+		unsigned lob_all		: 8;
+		struct {
+			unsigned data		: 1;
+			unsigned feat		: 1;
+			unsigned lbal		: 1;
+			unsigned nsect		: 1;
+			unsigned lbam		: 1;
+			unsigned lbah		: 1;
+			unsigned dev		: 1;
+			unsigned command	: 1;
+		} lob;
 	};
 	union {
-	unsigned hob_all		: 8;
-	struct {
-		unsigned data		: 1;
-		unsigned feat		: 1;
-		unsigned lbal		: 1;
-		unsigned nsect		: 1;
-		unsigned lbam		: 1;
-		unsigned lbah		: 1;
-		unsigned dev		: 1;
-		unsigned command	: 1;
-	} hob;
+		unsigned hob_all		: 8;
+		struct {
+			unsigned data		: 1;
+			unsigned feat		: 1;
+			unsigned lbal		: 1;
+			unsigned nsect		: 1;
+			unsigned lbam		: 1;
+			unsigned lbah		: 1;
+			unsigned dev		: 1;
+			unsigned command	: 1;
+		} hob;
 	};
 };
 
@@ -157,8 +158,8 @@ struct taskfile_regs {
 struct hdio_taskfile {
 	struct taskfile_regs	lob;
 	struct taskfile_regs	hob;
-	struct reg_flags	oflags;
-	struct reg_flags	iflags;
+	union reg_flags		oflags;
+	union reg_flags		iflags;
 	int			dphase;
 	int			cmd_req;     /* IDE command_type */
 	unsigned long		obytes;

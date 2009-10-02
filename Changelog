@@ -1,3 +1,7 @@
+hdparm-9.27
+	- repackaged again with wiper-2.5
+	- wiper.sh updated to wiper-2.3
+	- fix definition of reg_flags in sgio.h to work with old IDE drivers again
 hdparm-9.26
 	- wiper.sh updated to wiper-2.2
 	- zero-day bugfix for "hdparm -i" on model names with embedded blanks

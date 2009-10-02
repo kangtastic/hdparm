@@ -1,4 +1,4 @@
-TRIM / wiper script for SATA SSDs   (August 2009)
+TRIM / wiper script for SATA SSDs   (October 2009)
 =================================================
 
 The wiper.sh script is for tuning up SATA SSDs (Solid-State-Drives).
@@ -25,7 +25,7 @@ Until then, DO NOT USE THIS SCRIPT if you cannot afford losing your data!!
 
 
 This script works for read-write mounted ext4 and xfs filesystems,
-and for read-only mounted/unmounted ext2, ext3, ext4 and xfs filesystems.
+and for read-only mounted/unmounted ext2, ext3, ext4, reiser3 and xfs filesystems.
 
 Invoke the script with the pathname to the mounted filesystem
 or the block device path for the filesystem.
@@ -42,9 +42,14 @@ though the difference is small.
 
 btrfs -- DO NOT USE !!!
 
-Due to end-user demand, this script can also now TRIM some mounted btrfs filesystems.
+Chris Mason, the primary author/maintainer of btrfs, believes that
+the FIEMAP/FIBMAP ioctl() calls are completely unsafe when used on
+a btrfs filesystem.  Even when only a single device is involved.
+This seems rather strange. If true, those ioctls() should be removed from btrfs.
 
-But btrfs breaks the Linux filesystem model in many ways, making it rather dangerous
+But there are other issues, as well.
+
+btrfs breaks the Linux filesystem model in many ways, making it rather dangerous
 to your data to try and TRIM it.  It implements it's own internal multiple-device
 layer, similar to DM/MD/VFS, but without any indication to external utilities like wiper.sh.
 As a result, detection of the underlying device for the filesystem is haphazard at best,
@@ -55,10 +60,13 @@ ioctl()s will work incorrectly on btrfs when more than a single device is involv
 This means that btrfs will mislead the wiper.sh script, causing it to TRIM the WRONG sectors,
 destroying valuable data, programs, and filesystem metadata.  You will lose everything.
 
-Currently, it is mostly (but not completely) safe to run wiper.sh on a mounted btrfs
-filesystem which is comprised of a single underlying device partition.  This usually works
-without trouble.  But btrfs provides no means to detect this case, so wiper.sh is unable
-to safeguard against corruption in the cases where more than one device partition is used.
+Finally, due to the non-standard internal volume/device remapping done by btrfs,
+it is very difficult for standard Linux tools like hdparm and wiper.sh to actually
+determine the device that lies underneath a given file.  Odd, but true.
+
+So support for btrfs has been dropped as of wiper-2.5.
+It used to work for single drives, but as of the Linux-2.6.31 kernel even hdparm
+is now failing for simple operations like obtaining drive geometries from /sys on btrfs.
 
 btrfs is an experimental beta with serious issues; use ext4 or xfs instead.
 
