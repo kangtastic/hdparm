@@ -329,7 +329,7 @@ int do_drive_cmd (int fd, unsigned char *args)
 
 	rc = sg16(fd, SG_READ, is_dma(tf.command), &tf, data, data_bytes, 0);
 	if (rc == -1) {
-		if (errno == EINVAL || errno == ENODEV)
+		if (errno == EINVAL || errno == ENODEV || errno == EBADE)
 			goto use_legacy_ioctl;
 	}
 
@@ -413,7 +413,7 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 
 	rc = sg16(fd, rw, is_dma(tf.command), &tf, data, data_bytes, timeout_secs);
 	if (rc == -1) {
-		if (errno == EINVAL || errno == ENODEV)
+		if (errno == EINVAL || errno == ENODEV || errno == EBADE)
 			goto use_legacy_ioctl;
 	}
 

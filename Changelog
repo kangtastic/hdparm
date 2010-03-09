@@ -1,5 +1,10 @@
+hdparm-9.28
+	- check for EBADE for IDE/ATAPI compatibility with recent kernels
+	- always issue both methods when setting DVD speed with -E
+	- use /usr/sbin/rdev to find rootdev in wiper.sh
+	- fix reporting of Sector-0 offset, from Martin Petersen
+	- first crack at decoding the "WD Idle3" vendor-unique command (disabled by default)
 hdparm-9.27
-	- repackaged again with wiper-2.5
 	- wiper.sh updated to wiper-2.3
 	- fix definition of reg_flags in sgio.h to work with old IDE drivers again
 hdparm-9.26

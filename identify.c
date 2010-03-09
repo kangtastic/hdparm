@@ -938,7 +938,7 @@ void identify (__u16 *id_supplied)
 			printf("\t%-31s %11u bytes\n","Physical Sector size:", sector_bytes * pfactor);
 			if ((val[209] & 0xc000) == 0x4000) {
 				unsigned int offset = val[209] & 0x1fff;
-				printf("\t%-31s %11u bytes\n", "Logical Sector-0 offset:", offset * lsize);
+				printf("\t%-31s %11u bytes\n", "Logical Sector-0 offset:", offset * sector_bytes);
 			}
 		}
 		if (!bbbig) bbbig = (__u64)(ll>mm ? ll : mm); /* # 512 byte blocks */

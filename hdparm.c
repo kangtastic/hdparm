@@ -34,7 +34,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.27"
+#define VERSION "v9.28"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -63,6 +63,7 @@ static int do_defaults = 0, do_flush = 0, do_ctimings, do_timings = 0;
 static int do_identity = 0, get_geom = 0, noisy = 1, quiet = 0;
 static int do_flush_wcache = 0;
 
+//static int set_wdidle3  = 0;
 static int set_fsreadahead= 0, get_fsreadahead= 0, fsreadahead= 0;
 static int set_readonly = 0, get_readonly = 0, readonly = 0;
 static int set_unmask   = 0, get_unmask   = 0, unmask   = 0;
@@ -913,6 +914,44 @@ static int abort_if_not_full_device (int fd, __u64 lba, const char *devname, con
 	exit(EINVAL);
 }
 
+#if 0
+static int do_wdidle3 (int fd, const char *devname)
+{
+	struct ata_tf tf;
+	int err = 0;
+	const unsigned char vu_op = 0x8a;
+
+	abort_if_not_full_device(fd, 0, devname, NULL);
+	confirm_please_destroy_my_drive("--wdidle3", "This is not fully implemented yet, and could destroy the drive and/or all data on it.");
+	printf("attempting to tweak Western Digital \"idle-3\" parameters\n");
+	fflush(stdout);
+
+  {
+    unsigned char bits;
+    for (bits = 0; bits <= 0x1f; ++bits) {
+	tf_init(&tf, vu_op, 0, 0);
+	tf.lob.feat  = 'W';
+	tf.lob.nsect = 'D';
+	tf.lob.lbal  = 'C';
+	tf.lob.lbam  = 0x00;
+	tf.lob.lbah  = 0x00;
+	tf.dev       = 0xa0 | (tf.dev & 0xb0) | (bits & 0xf);
+	if (bits >= 0x10)
+		tf.dev |= 0x40;
+
+	/* This probably wants to transfer data, but.. ???? */
+	if (sg16(fd, SG_WRITE, SG_PIO, &tf, NULL, 0, 5 /* seconds */)) {
+		err = errno;
+		perror("FAILED");
+	} else {
+		printf("succeeded\n");
+	}
+    }
+  }
+	return err;
+}
+#endif
+
 static __u16 *get_dco_identify_data (int fd, int quietly)
 {
 	static __u8 args[4+512];
@@ -1393,6 +1432,7 @@ static void usage_help (int clue, int rc)
 	" --trim-sector-ranges        Tell SSD firmware to discard unneeded data sectors: lba:count ..\n"
 	" --trim-sector-ranges-stdin  Same as above, but reads lba:count pairs from stdin\n"
 	" --verbose         Display extra diagnostics from some commands\n"
+	//" --wdidle3         Issue the Western Digitial \"Idle3\" command (EXTREMELY DANGEROUS)\n"
 	" --write-sector    Repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
 	"\n");
 	exit(rc);
@@ -1452,6 +1492,8 @@ void process_dev (char *devname)
 		exit(do_trim_from_stdin(fd, devname, id));
 	}
 
+	//if (set_wdidle3)
+	//	do_wdidle3(fd, devname);
 	if (set_fsreadahead) {
 		if (get_fsreadahead)
 			printf(" setting fs readahead to %d\n", fsreadahead);
@@ -1673,6 +1715,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (set_cdromspeed) {
+		int err1, err2;
 		/* The CDROM_SELECT_SPEED ioctl
 		 * actually issues GPCMD_SET_SPEED to the drive.
 		 * But many newer DVD drives want GPCMD_SET_STREAMING instead,
@@ -1680,11 +1723,11 @@ void process_dev (char *devname)
 		 */
 		if (get_cdromspeed)
 			printf ("setting cd/dvd speed to %d\n", cdromspeed);
-		if (set_dvdspeed(fd, cdromspeed) != 0) {
-			if (ioctl (fd, CDROM_SELECT_SPEED, cdromspeed)) {
-				err = errno;
-				perror(" CDROM_SELECT_SPEED failed");
-			}
+		err1 = set_dvdspeed(fd, cdromspeed);
+		err2 = ioctl(fd, CDROM_SELECT_SPEED, cdromspeed);
+		if (err1 && err2) {
+			err = errno;
+			perror(" SET_STREAMING/CDROM_SELECT_SPEED both failed");
 		}
 	}
 	if (set_acoustic) {
@@ -2508,8 +2551,6 @@ get_longarg (void)
 		trim_from_stdin = 1;
 	} else if (0 == strcasecmp(name, "trim-sector-ranges")) {
 		int i, optional = 0, max_ranges = argc;
-		// FIXME Someday: this is silly, we should just mmap() the final form here,
-		// FIXME  instead of this intermediate data structure!
 		trim_sector_ranges = malloc(sizeof(struct sector_range_s) * max_ranges);
 		if (!trim_sector_ranges) {
 			int err = errno;
@@ -2537,6 +2578,8 @@ get_longarg (void)
 	} else if (0 == strcasecmp(name, "read-sector")) {
 		read_sector = 1;
 		get_u64_parm(0, 0, NULL, &read_sector_addr, 0, lba_limit, name, lba_emsg);
+	//} else if (0 == strcasecmp(name, "wdidle3")) {
+	//	set_wdidle3 = 1;
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
 	} else if (0 == strcasecmp(name, "security-mode")) {

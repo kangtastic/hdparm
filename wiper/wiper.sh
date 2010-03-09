@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord
 
-VERSION=2.5
+VERSION=2.6
  
 # Copyright (C) 2009 Mark Lord.  All rights reserved.
 #
@@ -42,7 +42,7 @@ function usage_error(){
 echo
 echo "${0##*/}: Linux SATA SSD TRIM utility, version $VERSION, by Mark Lord."
 
-verbose=0
+export verbose=0
 commit=""
 argc=$#
 arg=""
@@ -50,7 +50,7 @@ while [ $argc -gt 0 ]; do
 	if [ "$1" = "--commit" ]; then
 		commit=yes
 	elif [ "$1" = "--verbose" ]; then
-		verbose=1
+		verbose=$((verbose + 1))
 	elif [ "$1" = "" ]; then
 		usage_error
 	else
@@ -90,11 +90,14 @@ FIND=`find_prog /usr/bin/find`	|| exit 1
 STAT=`find_prog /usr/bin/stat`	|| exit 1
 GAWK=`find_prog /usr/bin/gawk`	|| exit 1
 BLKID=`find_prog /sbin/blkid`	|| exit 1
+RDEV=`find_prog /usr/sbin/rdev`	|| exit 1
 GREP=`find_prog /bin/grep`	|| exit 1
 ID=`find_prog /usr/bin/id`	|| exit 1
 LS=`find_prog /bin/ls`		|| exit 1
 DF=`find_prog /bin/df`		|| exit 1
 RM=`find_prog /bin/rm`		|| exit 1
+
+[ $verbose -gt 1 ] && HDPARM="$HDPARM --verbose"
 
 ## I suppose this will confuse the three SELinux users out there:
 ##
@@ -235,10 +238,8 @@ function get_fsmode(){  ## from fsdir
 ## because that's the pattern such systems also use in /proc/mounts.
 ## Later, at time of use, we'll try harder to find the real rootdev.
 ##
-rdev="`($DF -P / | $GAWK '/^[/]/{print $1;exit}') 2>/dev/null`"
-rootdev="`get_realpath "$rootdev"`"
-[ "$rootdev" = "" ] && rootdev=$rdev
-[ $verbose -gt 0 ] && echo "rootdev=$rootdev rdev=$rdev"
+rootdev=`$RDEV | $GAWK '{print $1}'`
+[ $verbose -gt 0 ] && echo "rootdev=$rootdev"
 
 ## The user gave us a directory (mount point) to TRIM,
 ## which implies that we will be doing an online TRIM
@@ -273,12 +274,11 @@ if [ "$method" = "online" ]; then
 			echo "$fsdev: not found" >&2
 			exit 1
 		fi
-		rdev="`get_devpath /`"
-		if [ "$rdev" = "" ]; then
+		if [ "$rootdev" = "" ]; then
 			echo "$fsdev: not found" >&2
 			exit 1
 		fi
-		fsdev="$rdev"
+		fsdev="$rootdev"
 	fi
 	if [ ! -b "$fsdev" ]; then
 		echo "$fsdev: not a block device" >&2
@@ -609,7 +609,8 @@ GAWKPROG='
 		while (count > 0) {
 			this_count  = (count > 65535) ? 65535 : count
 			printf "%u:%u ", lba, this_count
-			#if (verbose) printf "%u:%u ", lba, this_count > "/dev/stderr"
+			if (verbose > 1)
+				printf "%u:%u ", lba, this_count > "/dev/stderr"
 			lba        += this_count
 			count      -= this_count
 			nranges++;

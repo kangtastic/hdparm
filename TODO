@@ -3,8 +3,6 @@ Mark's TO-DO list for hdparm:
 
 - Make parameter parsing/etc.. LBA48 safe everywhere (instead of merely u32).
 
-- More ATA9 updates for IDENTIFY data.
-
 - Add "wipe-drive" functionality via SCT WRITE_SAME (or manual).
 
 - Add "surface-scan" functionality via SG READ_VERIFY.
