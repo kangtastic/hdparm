@@ -1,3 +1,14 @@
+hdparm-9.29
+	- add --offset for use with -t, to get timings from middle/end of drive,
+	     courtesy of Sergei Kirjanov <rewlad@gmail.com>
+	- restrict --trim-sector-ranges-stdin to small TRIM commands on most drives
+	- fix w62 bug in -I
+	- dump all data bytes with --verbose
+	- warn about bad/missing sense data, but continue regardless
+	- show in/out data[] separately with --verbose
+	- Add reporting to -I for sata3 signaling speed.
+	- force use of ATA_16 for all commands to ATAPI devices.
+	- supply a sector count of "1" for IDENTIFY commands, to satisfy buggy USB3 bridges.
 hdparm-9.28
 	- check for EBADE for IDE/ATAPI compatibility with recent kernels
 	- always issue both methods when setting DVD speed with -E

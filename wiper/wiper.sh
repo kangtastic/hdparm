@@ -2,9 +2,9 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord
 
-VERSION=2.6
+VERSION=2.7
  
-# Copyright (C) 2009 Mark Lord.  All rights reserved.
+# Copyright (C) 2009-2010 Mark Lord.  All rights reserved.
 #
 # Requires gawk, a really-recent hdparm, and various other programs.
 # This needs to be redone entirely in C, for 64-bit math, someday.
@@ -21,6 +21,10 @@ VERSION=2.6
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software Foundation,
 # Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+#
+# Note for OCZ Vertex-LE users:  the drive firmware will error when
+# attempting to trim the final sector of the drive.  To avoid this,
+# partition the drive such that the final sector is not used.
 
 export LANG=C
 

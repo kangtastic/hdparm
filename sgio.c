@@ -162,10 +162,16 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	unsigned char cdb[SG_ATA_16_LEN];
 	unsigned char sb[32], *desc;
 	struct scsi_sg_io_hdr io_hdr;
+	int prefer12 = prefer_ata12;
+
+	if (tf->command == ATA_OP_PIDENTIFY)
+		prefer12 = 0;
 
 	memset(&cdb, 0, sizeof(cdb));
 	memset(&sb,     0, sizeof(sb));
 	memset(&io_hdr, 0, sizeof(struct scsi_sg_io_hdr));
+	if (data && data_bytes && !rw)
+		memset(data, 0, data_bytes);
 
 	if (dma) {
 		//cdb[1] = data ? (rw ? SG_ATA_PROTO_UDMA_OUT : SG_ATA_PROTO_UDMA_IN) : SG_ATA_PROTO_NON_DATA;
@@ -179,7 +185,7 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 		cdb[2] |= rw ? SG_CDB2_TDIR_TO_DEV : SG_CDB2_TDIR_FROM_DEV;
 	}
 
-	if (!prefer_ata12 || tf->is_lba48) {
+	if (!prefer12 || tf->is_lba48) {
 		cdb[ 0] = SG_ATA_16;
 		cdb[ 4] = tf->lob.feat;
 		cdb[ 6] = tf->lob.nsect;
@@ -221,8 +227,8 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 
 	if (verbose) {
 		dump_bytes("outgoing cdb", cdb, sizeof(cdb));
-		if (data)
-			dump_bytes("data", data, 16);
+		if (rw && data)
+			dump_bytes("outgoing_data", data, data_bytes);
 	}
 
 	if (ioctl(fd, SG_IO, &io_hdr) == -1) {
@@ -235,28 +241,48 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 		fprintf(stderr, "SG_IO: ATA_%u status=0x%x, host_status=0x%x, driver_status=0x%x\n",
 			io_hdr.cmd_len, io_hdr.status, io_hdr.host_status, io_hdr.driver_status);
 
-	if (io_hdr.host_status || io_hdr.driver_status != SG_DRIVER_SENSE
-	 || (io_hdr.status && io_hdr.status != SG_CHECK_CONDITION))
-	{
+	if (io_hdr.status && io_hdr.status != SG_CHECK_CONDITION) {
 		if (verbose)
-			fprintf(stderr, "SG_IO: bad response (not CHECK_CONDITION)\n");
+			fprintf(stderr, "SG_IO: bad status: 0x%x\n", io_hdr.status);
+	  	errno = EBADE;
+		return -1;
+	}
+	if (io_hdr.host_status) {
+		if (verbose)
+			fprintf(stderr, "SG_IO: bad host status: 0x%x\n", io_hdr.host_status);
+	  	errno = EBADE;
+		return -1;
+	}
+	if (verbose) {
+		dump_bytes("SG_IO: sb[]", sb, sizeof(sb));
+		if (!rw && data)
+			dump_bytes("incoming_data", data, data_bytes);
+	}
+
+	if (io_hdr.driver_status && (io_hdr.driver_status != SG_DRIVER_SENSE)) {
+		if (verbose)
+			fprintf(stderr, "SG_IO: bad driver status: 0x%x\n", io_hdr.driver_status);
 	  	errno = EBADE;
 		return -1;
 	}
 
 	desc = sb + 8;
-	if (sb[0] != 0x72 || sb[7] < 14 || desc[0] != 0x09 || desc[1] < 0x0c) {
-		if (verbose)
-			dump_bytes("SG_IO: bad/missing sense data, sb[]", sb, sizeof(sb));
-		errno = EBADE;
-		return -1;
+	if (io_hdr.driver_status != SG_DRIVER_SENSE) {
+		if (sb[0] | sb[1] | sb[2] | sb[3] | sb[4] | sb[5] | sb[6] | sb[7] | sb[8] | sb[9]) {
+			static int second_try = 0;
+			if (!second_try++)
+				fprintf(stderr, "SG_IO: questionable sense data, results may be incorrect\n");
+		} else {
+			static int second_try = 0;
+			if (!second_try++)
+				fprintf(stderr, "SG_IO: missing sense data, results may be incorrect\n");
+		}
+	} else if (sb[0] != 0x72 || sb[7] < 14 || desc[0] != 0x09 || desc[1] < 0x0c) {
+		dump_bytes("SG_IO: bad/missing sense data, sb[]", sb, sizeof(sb));
 	}
 
-	if (verbose)
-		dump_bytes("SG_IO: sb[]", sb, sizeof(sb));
-
 	if (verbose) {
-		int len = desc[1], maxlen = sizeof(sb) - 8 - 2;
+		unsigned int len = desc[1], maxlen = sizeof(sb) - 8 - 2;
 		if (len > maxlen)
 			len = maxlen;
 		dump_bytes("SG_IO: desc[]", desc, len);
@@ -320,8 +346,8 @@ int do_drive_cmd (int fd, unsigned char *args)
 	}
 	tf_init(&tf, args[0], 0, args[1]);
 	tf.lob.feat = args[2];
+	tf.lob.nsect = args[3];
 	if (tf.command == ATA_OP_SMART) {
-		tf.lob.nsect = args[3];
 		tf.lob.lbal  = args[1];
 		tf.lob.lbam  = 0x4f;
 		tf.lob.lbah  = 0xc2;

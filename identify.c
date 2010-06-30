@@ -433,7 +433,7 @@ static const char *cap_sata0_str[16] = {
 	"unknown 76[6]",				/* word 76 bit  6 */
 	"unknown 76[5]",				/* word 76 bit  5 */
 	"unknown 76[4]",				/* word 76 bit  4 */
-	"unknown 76[3]",				/* word 76 bit  3 */
+	"Gen3 signaling speed (6.0Gb/s)",		/* word 76 bit  3 */
 	"Gen2 signaling speed (3.0Gb/s)",		/* word 76 bit  2 */
 	"Gen1 signaling speed (1.5Gb/s)",		/* word 76 bit  1 */
 	"unknown 76[0]"					/* word 76 bit  0 */
@@ -1101,7 +1101,8 @@ void identify (__u16 *id_supplied)
 		sdma_ok = 0;  /* word 62 has been re-purposed for non-sdma mode reporting */
 		printf("\tDMADIR bit required in PACKET commands\n");
 	} else {
-		__u8 w62 = val[62], hi = w62 >> 8, lo = w62;
+		__u16 w62 = val[62];
+		__u8 hi = w62 >> 8, lo = w62;
 		if (!w62 || (lo & 0xf8))
 			sdma_ok = 0;
 		else if (hi && hi != 1 && hi != 2 && hi != 4)
@@ -1330,7 +1331,8 @@ void identify (__u16 *id_supplied)
 			printf("\n");
 		}
 	}
-	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_EN_2] & WWN_SUP)) {
+	//printf("w84=0x%04x w87=0x%04x like_std=%d\n", val[84], val[87], like_std);
+	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_SUPP_2] & WWN_SUP)) {
 		printf("Logical Unit WWN Device Identifier: %04x%04x%04x%04x\n", val[108], val[109], val[110], val[111]);
 		printf("\tNAA\t\t: %x\n", (val[108] & 0xf000) >> 12);
 		printf("\tIEEE OUI\t: %06x\n", (((val[108] & 0x0fff) << 12) | ((val[109] & 0xfff0) >> 4)));

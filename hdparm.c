@@ -1,5 +1,6 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
 /*          - by Mark Lord (C) 1994-2008 -- freely distributable */
+#define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
 #include <stdlib.h>
@@ -34,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.28"
+#define VERSION "v9.29"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -64,6 +65,8 @@ static int do_identity = 0, get_geom = 0, noisy = 1, quiet = 0;
 static int do_flush_wcache = 0;
 
 //static int set_wdidle3  = 0;
+static int   set_timings_offset = 0;
+static __u64 timings_offset = 0;
 static int set_fsreadahead= 0, get_fsreadahead= 0, fsreadahead= 0;
 static int set_readonly = 0, get_readonly = 0, readonly = 0;
 static int set_unmask   = 0, get_unmask   = 0, unmask   = 0;
@@ -334,8 +337,17 @@ static int time_device (int fd)
 	if (err)
 		goto quit;
 
-	printf(" Timing %s disk reads:  ", (open_flags & O_DIRECT) ? "O_DIRECT" : "buffered");
+	printf(" Timing %s disk reads", (open_flags & O_DIRECT) ? "O_DIRECT" : "buffered");
+	if (set_timings_offset)
+		printf(" (offset %llu GB)", timings_offset / 0x40000000ULL);
+	printf(": ");
 	fflush(stdout);
+
+	if (set_timings_offset && lseek64(fd, timings_offset, SEEK_SET) == (off64_t)-1) {
+		err = errno;
+		perror("lseek() failed");
+		goto quit;
+	}
 
 	/*
 	 * getitimer() is used rather than gettimeofday() because
@@ -819,13 +831,14 @@ static void *get_identify_data (int fd, void *prev)
 	memset(args, 0, sizeof(args));
 	last_identify_op = ATA_OP_IDENTIFY;
 	args[0] = last_identify_op;
-	args[3] = 1;
+	args[3] = 1;	/* sector count */
 	if (do_drive_cmd(fd, args)) {
+		prefer_ata12 = 0;
 		last_identify_op = ATA_OP_PIDENTIFY;
 		args[0] = last_identify_op;
 		args[1] = 0;
 		args[2] = 0;
-		args[3] = 1;
+		args[3] = 1;	/* sector count */
 		if (do_drive_cmd(fd, args)) {
 			perror(" HDIO_DRIVE_CMD(identify) failed");
 			return NULL;
@@ -1193,22 +1206,59 @@ static void do_trim_sector_ranges (int fd, const char *devname, int nranges, str
 	exit(err);
 }
 
+static void
+extract_id_string (__u16 *idw, int words, char *dst)
+{
+	char *e;
+	int i, max = words * 2;
+
+	for (i = 0; i < words; ++i) {
+		__u16 w = idw[i];
+		w = (__u16)(__be16)(w);
+		dst[i*2  ] = w >> 8;
+		dst[i*2+1] = w;
+	}
+	dst[max] = '\0';
+	for (e = dst + max; --e != dst;) {
+		if (*e && *e != ' ')
+			break;
+		*e = '\0';
+	}
+}
+
+static int
+get_trim_dev_limit (void *id)
+{
+	__u16 *idw = id;
+	char model[41];
+
+	extract_id_string(idw + 27, 20, model);
+	if (0 == strcmp(model, "OCZ VERTEX-LE"))
+		return 8;
+	if (0 == strcmp(model, "OCZ-VERTEX"))
+		return 64;
+	return 1;  /* all other drives, including Intel SSDs */
+}
+
 static int
 do_trim_from_stdin (int fd, const char *devname, void *id)
 {
 	__u64 *data, range, nsectors = 0, lba_limit;
 	unsigned int max_kb, data_sects, data_bytes;
-	unsigned int total_ranges = 0, nranges = 0, max_ranges;
+	unsigned int total_ranges = 0, nranges = 0, max_ranges, dev_limit;
 	int err = 0;
 
 	id = get_identify_data(fd, id);
 	lba_limit = id ? get_lba_capacity(id) : (1ULL << 48) - 1;
+	dev_limit = get_trim_dev_limit(id);
 
 	err = sysfs_get_attr(fd, "queue/max_sectors_kb", "%u", &max_kb, NULL, 0);
 	if (err || max_kb == 0)
-		data_sects = 128;	/* "safe" default for most hardware */
+		data_sects = 128;	/* "safe" default for most controllers */
 	else
 		data_sects = max_kb * 2;
+	if (data_sects > dev_limit)
+		data_sects = dev_limit;
 	data_bytes = data_sects * 512;
 
 	data = mmap(NULL, data_bytes, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
@@ -1217,6 +1267,7 @@ do_trim_from_stdin (int fd, const char *devname, void *id)
 		perror("mmap(MAP_ANONYMOUS)");
 		exit(err);
 	}
+	memset(data, 0, data_bytes);
 	max_ranges = data_bytes / sizeof(range);
 
 	do {
@@ -1240,6 +1291,7 @@ do_trim_from_stdin (int fd, const char *devname, void *id)
 			data[nranges++] = __cpu_to_le64(range);
 			if (nranges == max_ranges) {
 				err = trim_sectors(fd, devname, nranges, data, nsectors);
+				memset(data, 0, data_bytes);
 				nranges = 0;
 				nsectors = 0;
 			}
@@ -1426,6 +1478,7 @@ static void usage_help (int clue, int rc)
 	" --Istdin          Read identify data from stdin as ASCII hex\n"
 	" --Istdout         Write identify data to stdout as ASCII hex\n"
 	" --make-bad-sector Deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
+	" --offset          use with -t, to begin timings at given offset (in GiB) from start of drive\n"
 	" --prefer-ata12    Use 12-byte (instead of 16-byte) SAT commands when possible\n"
 	" --read-sector     Read and dump (in hex) a sector directly from the media\n"
 	" --security-help   Display help for ATA security commands\n"
@@ -2497,6 +2550,10 @@ get_longarg (void)
 	} else if (0 == strcasecmp(name, "prefer-ata12")) {
 		prefer_ata12 = 1;
 		--num_flags_processed;	/* doesn't count as an action flag */
+	} else if (0 == strcasecmp(name, "offset")) {
+		set_timings_offset = 1;
+		get_u64_parm(0, 0, NULL, &timings_offset, 0, ~0, name, "GB offset for -t flag");
+		timings_offset *= 0x40000000ULL;
 	} else if (0 == strcasecmp(name, "yes-i-know-what-i-am-doing")) {
 		i_know_what_i_am_doing = 1;
 		--num_flags_processed;	/* doesn't count as an action flag */

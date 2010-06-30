@@ -1,4 +1,4 @@
-.TH HDPARM 8 "March 2010" "Version 9.28"
+.TH HDPARM 8 "June 2010" "Version 9.29"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -448,6 +448,14 @@ As of the 2.6.27 kernel, this does finally seem to be working on most hardware.
 .I -n
 Get or set the "ignore write errors" flag in the driver.
 Do NOT play with this without grokking the driver source code first.
+.TP
+.I --offset
+Offsets to given number of GiB (1024*1024*1024) when performing 
+.B -t
+timings of device reads. 
+Speed changes (about twice) along many mechanical drives. 
+Usually the maximum is at the beginning, but not always.
+Solid-state drives (SSDs) should show similar timings regardless of offset.
 .TP
 .I -p
 Attempt to reprogram the IDE interface chipset for the specified PIO mode,

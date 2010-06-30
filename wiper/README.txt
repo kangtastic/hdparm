@@ -1,4 +1,4 @@
-TRIM / wiper script for SATA SSDs   (October 2009)
+TRIM / wiper script for SATA SSDs   (June 2010)
 =================================================
 
 The wiper.sh script is for tuning up SATA SSDs (Solid-State-Drives).
@@ -16,13 +16,7 @@ It does work for me here, but it has not yet been exhaustively tested by others.
 Please back-up your data to a *different* physical drive before trying it.
 And if you are at all worried, then DO NOT USE THIS SCRIPT!!
 
-Once there are drives in the marketplace with production firmware that supports
-the SATA DSM TRIM command, then this will get tested a bit more over time.
-As that happens, it will be moved out of this directory and installed alongside
-the hdparm executable, probably under /sbin or /usr/sbin.
-
-Until then, DO NOT USE THIS SCRIPT if you cannot afford losing your data!!
-
+DO NOT USE THIS SCRIPT if you cannot afford losing your data!!
 
 This script works for read-write mounted ext4 and xfs filesystems,
 and for read-only mounted/unmounted ext2, ext3, ext4, reiser3 and xfs filesystems.
