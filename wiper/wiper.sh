@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord
 
-VERSION=2.7
+VERSION=2.8
  
 # Copyright (C) 2009-2010 Mark Lord.  All rights reserved.
 #

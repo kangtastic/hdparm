@@ -1,3 +1,7 @@
+hdparm-9.30
+	- report word[105] in -I :  max 512-byte blocks of range-data per DSM/Trim command
+	- fix wiper.sh/hdparm to use only as many LBA ranges per TRIM as the drive can handle
+	- manpage / help-text cleanups from Benno Schulenberg <bensberg@justemail.net>
 hdparm-9.29
 	- add --offset for use with -t, to get timings from middle/end of drive,
 	     courtesy of Sergei Kirjanov <rewlad@gmail.com>

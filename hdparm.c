@@ -35,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.29"
+#define VERSION "v9.30"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -1232,6 +1232,8 @@ get_trim_dev_limit (void *id)
 	__u16 *idw = id;
 	char model[41];
 
+	if (idw[105] && idw[105] != 0xffff)
+		return idw[105];
 	extract_id_string(idw + 27, 20, model);
 	if (0 == strcmp(model, "OCZ VERTEX-LE"))
 		return 8;
@@ -1415,7 +1417,7 @@ static void usage_help (int clue, int rc)
 
 	fprintf(desc,"\n%s - get/set hard disk parameters - version " VERSION ", by Mark Lord.\n\n", progname);
 	if (0) if (rc) fprintf(desc, "clue=%d\n", clue);
-	fprintf(desc,"Usage:  %s  [options] [device] ..\n\n", progname);
+	fprintf(desc,"Usage:  %s  [options] [device ...]\n\n", progname);
 	fprintf(desc,"Options:\n"
 	" -a   Get/set fs readahead\n"
 	" -A   Get/set the drive look-ahead flag (0/1)\n"
@@ -1436,10 +1438,10 @@ static void usage_help (int clue, int rc)
 	" -k   Get/set keep_settings_over_reset flag (0/1)\n"
 	" -K   Set drive keep_features_over_reset flag (0/1)\n"
 	" -L   Set drive doorlock (0/1) (removable harddisks only)\n"
-	" -M   Get/set acoustic management (0-254, 128: quiet, 254: fast)\n"
 	" -m   Get/set multiple sector count\n"
-	" -N   Get/set max visible number of sectors (HPA) (VERY DANGEROUS)\n"
+	" -M   Get/set acoustic management (0-254, 128: quiet, 254: fast)\n"
 	" -n   Get/set ignore-write-errors flag (0/1)\n"
+	" -N   Get/set max visible number of sectors (HPA) (VERY DANGEROUS)\n"
 	" -p   Set PIO mode on IDE interface chipset (0,1,2,3,4,...)\n"
 	" -P   Set drive prefetch count\n"
 	" -q   Change next setting quietly\n"
@@ -1452,7 +1454,7 @@ static void usage_help (int clue, int rc)
 	" -T   Perform cache read timings\n"
 	" -u   Get/set unmaskirq flag (0/1)\n"
 	" -U   Obsolete\n"
-	" -v   Defaults; same as -acdgkmur for IDE drives\n"
+	" -v   Use defaults; same as -acdgkmur for IDE drives\n"
 	" -V   Display program version and exit immediately\n"
 	" -w   Perform device reset (DANGEROUS)\n"
 	" -W   Get/set drive write-caching flag (0/1)\n"
@@ -1460,8 +1462,8 @@ static void usage_help (int clue, int rc)
 	" -X   Set IDE xfer mode (DANGEROUS)\n"
 	" -y   Put drive in standby mode\n"
 	" -Y   Put drive to sleep\n"
-	" -Z   Disable Seagate auto-powersaving mode\n"
 	" -z   Re-read partition table\n"
+	" -Z   Disable Seagate auto-powersaving mode\n"
 	" --dco-freeze      Freeze/lock current device configuration until next power cycle\n"
 	" --dco-identify    Read/dump device configuration identify data\n"
 	" --dco-restore     Reset device configuration back to factory defaults\n"

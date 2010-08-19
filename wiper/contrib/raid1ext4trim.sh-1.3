@@ -4,7 +4,7 @@
 #
 # By Chris Caputo.  Adapted from wiper.sh (ver 2.6) by Mark Lord.
 
-VERSION=1.2
+VERSION=1.3
 
 # Copyright (C) 2010 Chris Caputo.  All rights reserved.
 #
@@ -375,7 +375,7 @@ do
 					echo $ranges | $TRIM
 					ret=$?
 					if [ $ret -ne 0 ] ; then
-						exit $ret
+						do_cleanup $ret
 					fi
 					ranges=$range
 					i=1
@@ -385,7 +385,7 @@ do
 			echo $ranges | $TRIM
 			ret=$?
 			if [ $ret -ne 0 ] ; then
-				exit $ret
+				do_cleanup $ret
 			fi
 			ranges=""
 		fi

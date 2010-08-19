@@ -1211,7 +1211,11 @@ void identify (__u16 *id_supplied)
 		__u16 word69 = val[69] & ~(trimz | trimd); /* TRIM bits require special interpretation */
 		print_features(word69, word69, feat_word69_str);
 		if (val[169] & 1 && val[169] != 0xffff) { /* supports TRIM ? */
-			printf("\t   *\tData Set Management TRIM supported\n");
+			printf("\t   *\tData Set Management TRIM supported");
+			if (val[105] && val[105] != 0xffff)
+				printf(" (limit %u block%s)\n", val[105], val[105] > 1 ? "s" : "");
+			else
+				printf(" (limit unknown)\n");
 			if (val[69] & trimd) { /* Deterministic TRIM support */
 				if (val[69] & trimz)
 					print_features(trimz, trimz, feat_word69_str);
