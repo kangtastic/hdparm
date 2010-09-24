@@ -1,4 +1,4 @@
-.TH HDPARM 8 "August 2010" "Version 9.30"
+.TH HDPARM 8 "September 2010" "Version 9.31"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -424,6 +424,10 @@ are currently hidden from the operating system, in the form of a
 .B Host Protected Area (HPA).
 This area is often used by computer makers to hold diagnostic software,
 and/or a copy of the originally provided operating system for recovery purposes.
+Another possible use is to hide the true capacity of a very large disk
+from a BIOS/system that cannot normally cope with drives of that size
+(eg. most current {2010} BIOSs cannot deal with drives larger than 2TB,
+so an HPA could be used to cause a 3TB drive to report itself as a 2TB drive).
 To change the current max (VERY DANGEROUS, DATA LOSS IS EXTREMELY LIKELY),
 a new value should be provided (in base10) immediately
 following the
@@ -723,7 +727,7 @@ at inconvenient times.
 .PP
 These switches are
 .B DANGEROUS
-to experiment with, and might not work with every kernel.
+to experiment with, and might not work with some kernels.
 .B USE AT YOUR OWN RISK.
 .TP
 .I --security-help             
@@ -739,9 +743,9 @@ No other options are permitted on the command line with this one.
 .I --security-unlock PWD 
 Unlock the drive, using password PWD.
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
-The applicable drive password is selected with the --user-master switch.
+The applicable drive password is selected with the --user-master switch
+(default is "user" password).
 No other options are permitted on the command line with this one.
-.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-set-pass PWD 
 Lock the drive, using password PWD (Set Password)
@@ -750,17 +754,17 @@ Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 Use the special password
 .B NULL
 to set an empty password.
-The applicable drive password is selected with the --user-master switch and the
-applicable security mode with the --security-mode switch.
+The applicable drive password is selected with the --user-master switch
+(default is "user" password)
+and the applicable security mode with the --security-mode switch.
 No other options are permitted on the command line with this one.
-.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-disable PWD 
 Disable drive locking, using password PWD.
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
-The applicable drive password is selected with the --user-master switch.
+The applicable drive password is selected with the --user-master switch
+(default is "user" password).
 No other options are permitted on the command line with this one.
-.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-erase PWD
 Erase (locked) drive, using password PWD
@@ -769,27 +773,26 @@ Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
 Use the special password
 .B NULL
 to represent an empty password.
-The applicable drive password is selected with the --user-master switch.
+The applicable drive password is selected with the --user-master switch
+(default is "user" password).
 No other options are permitted on the command line with this one.
-.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-erase-enhanced PWD
 Enhanced erase (locked) drive, using password PWD
 .B (DANGEROUS).
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
-The applicable drive password is selected with the --user-master switch.
+The applicable drive password is selected with the --user-master switch
+(default is "user" password).
 No other options are permitted on the command line with this one.
-.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --user-master USER
 Specifies which password (user/master) to select.
-.B Defaults to master.
+.B Defaults to "user" password.
 Only useful in combination with --security-unlock, --security-set-pass,
 --security-disable, --security-erase or --security-erase-enhanced.
         u       user password
         m       master password
 
-.B THIS FEATURE IS EXPERIMENTAL AND NOT WELL TESTED. USE AT YOUR OWN RISK.
 .TP
 .I --security-mode MODE 
 Specifies which security mode (high/maximum) to set.
@@ -851,4 +854,4 @@ Technical Committee T13 AT Attachment (ATA/ATAPI) Interface.
 Serial ATA International Organization.
 .PP
 .B http://www.compactflash.org/
-CompactFlash Association
+CompactFlash Association.

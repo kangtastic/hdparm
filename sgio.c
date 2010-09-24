@@ -20,6 +20,8 @@
 extern int verbose;
 extern int prefer_ata12;
 
+static const int default_timeout_secs = 15;
+
 /*
  * Taskfile layout for SG_ATA_16 cdb:
  *
@@ -67,6 +69,9 @@ static inline int needs_lba48 (__u8 ata_op, __u64 lba, unsigned int nsect)
 		case ATA_OP_SET_MAX_EXT:
 		case ATA_OP_FLUSHCACHE_EXT:
 			return 1;
+		case ATA_OP_SECURITY_ERASE_PREPARE:
+		case ATA_OP_SECURITY_ERASE_UNIT:
+			return 0;
 	}
 	if (lba >= lba28_limit)
 		return 1;
@@ -223,7 +228,7 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	io_hdr.cmdp		= cdb;
 	io_hdr.sbp		= sb;
 	io_hdr.pack_id		= tf_to_lba(tf);
-	io_hdr.timeout		= (timeout_secs ? timeout_secs : 5) * 1000; /* msecs */
+	io_hdr.timeout		= (timeout_secs ? timeout_secs : default_timeout_secs) * 1000; /* msecs */
 
 	if (verbose) {
 		dump_bytes("outgoing cdb", cdb, sizeof(cdb));
@@ -326,7 +331,7 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 
 #endif /* SG_IO */
 
-int do_drive_cmd (int fd, unsigned char *args)
+int do_drive_cmd (int fd, unsigned char *args, unsigned int timeout_secs)
 {
 #ifdef SG_IO
 
@@ -353,7 +358,7 @@ int do_drive_cmd (int fd, unsigned char *args)
 		tf.lob.lbah  = 0xc2;
 	}
 
-	rc = sg16(fd, SG_READ, is_dma(tf.command), &tf, data, data_bytes, 0);
+	rc = sg16(fd, SG_READ, is_dma(tf.command), &tf, data, data_bytes, timeout_secs);
 	if (rc == -1) {
 		if (errno == EINVAL || errno == ENODEV || errno == EBADE)
 			goto use_legacy_ioctl;

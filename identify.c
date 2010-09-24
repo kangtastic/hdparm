@@ -1326,12 +1326,12 @@ void identify (__u16 *id_supplied)
 				else				  printf("high\n");
 			}
 		}
-		jj =  val[ERASE_TIME]     & ERASE_BITS;
-		kk =  val[ENH_ERASE_TIME] & ERASE_BITS;
-		if(jj || kk) {
+		jj =  val[ERASE_TIME];
+		kk =  val[ENH_ERASE_TIME];
+		if((jj && jj <= 0x00ff) || (kk && kk <= 0x00ff)) {
 			printf("\t");
-			if(jj) printf("%umin for SECURITY ERASE UNIT. ", jj==ERASE_BITS ? 508 : jj<<1);
-			if(kk) printf("%umin for ENHANCED SECURITY ERASE UNIT.", kk==ERASE_BITS ? 508 : kk<<1);
+			if(jj) printf("%umin for SECURITY ERASE UNIT. ",         (jj == 0xff) ? 508 : (jj * 2));
+			if(kk) printf("%umin for ENHANCED SECURITY ERASE UNIT.", (kk == 0xff) ? 508 : (kk * 2));
 			printf("\n");
 		}
 	}

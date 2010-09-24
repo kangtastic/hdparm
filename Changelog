@@ -1,3 +1,11 @@
+hdparm-9.31
+	- fix oflags bug in do_taskfile_cmd().
+	- change --user-master to default to "user" instead of "master", for better drive compatibility.
+	- use drive-supplied timeout (plus a little) for security-erase commands
+	- use 15 secs as default general timeout (instead of 5)
+	- ensure timeouts get passed through to sg16 correctly
+	- increment revision-code when setting master-password, rather than always using 0xff11
+	- update HPA description in manpage
 hdparm-9.30
 	- report word[105] in -I :  max 512-byte blocks of range-data per DSM/Trim command
 	- fix wiper.sh/hdparm to use only as many LBA ranges per TRIM as the drive can handle

@@ -114,8 +114,7 @@ enum {
 	TASKFILE_DPHASE_PIO_OUT	= 4,	/* ide: TASKFILE_OUT */
 };
 
-union reg_flags {
-	unsigned all				: 16;
+struct reg_flags {
 	union {
 		unsigned lob_all		: 8;
 		struct {
@@ -158,8 +157,8 @@ struct taskfile_regs {
 struct hdio_taskfile {
 	struct taskfile_regs	lob;
 	struct taskfile_regs	hob;
-	union reg_flags		oflags;
-	union reg_flags		iflags;
+	struct reg_flags	oflags;
+	struct reg_flags	iflags;
 	int			dphase;
 	int			cmd_req;     /* IDE command_type */
 	unsigned long		obytes;
@@ -225,7 +224,7 @@ struct scsi_sg_io_hdr {
 void tf_init (struct ata_tf *tf, __u8 ata_op, __u64 lba, unsigned int nsect);
 __u64 tf_to_lba (struct ata_tf *tf);
 int sg16 (int fd, int rw, int dma, struct ata_tf *tf, void *data, unsigned int data_bytes, unsigned int timeout_secs);
-int do_drive_cmd (int fd, unsigned char *args);
+int do_drive_cmd (int fd, unsigned char *args, unsigned int timeout);
 int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs);
 int dev_has_sgio (int fd);
 void init_hdio_taskfile (struct hdio_taskfile *r, __u8 ata_op, int rw, int force_lba48,
