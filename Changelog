@@ -1,3 +1,5 @@
+hdparm-9.32
+	- fix b0rked (since 9.27?) SET_FEATURES commands; eg. -B, -M, etc..
 hdparm-9.31
 	- fix oflags bug in do_taskfile_cmd().
 	- change --user-master to default to "user" instead of "master", for better drive compatibility.

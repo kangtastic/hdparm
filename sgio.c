@@ -287,7 +287,7 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	}
 
 	if (verbose) {
-		unsigned int len = desc[1], maxlen = sizeof(sb) - 8 - 2;
+		unsigned int len = desc[1] + 2, maxlen = sizeof(sb) - 8 - 2;
 		if (len > maxlen)
 			len = maxlen;
 		dump_bytes("SG_IO: desc[]", desc, len);
@@ -345,14 +345,14 @@ int do_drive_cmd (int fd, unsigned char *args, unsigned int timeout_secs)
 	/*
 	 * Reformat and try to issue via SG_IO:
 	 */
-	if (args[3]) {
+	if (args[3] && args[0] != ATA_OP_SETFEATURES) {
 		data_bytes = args[3] * 512;
 		data       = args + 4;
 	}
 	tf_init(&tf, args[0], 0, args[1]);
 	tf.lob.feat = args[2];
-	tf.lob.nsect = args[3];
 	if (tf.command == ATA_OP_SMART) {
+		tf.lob.nsect = args[3];
 		tf.lob.lbal  = args[1];
 		tf.lob.lbam  = 0x4f;
 		tf.lob.lbah  = 0xc2;

@@ -35,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.31"
+#define VERSION "v9.32"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -390,12 +390,15 @@ static void dmpstr (const char *prefix, unsigned int i, const char *s[], unsigne
 		printf("%s%s", prefix, s[i]);
 }
 
+static __u16 *id;
+static void get_identify_data (int fd);
+
 static __u64 get_lba_capacity (__u16 *idw)
 {
-	__u64 nsects = (idw[58] << 16) | idw[57];
+	__u64 nsects = ((__u32)idw[58] << 16) | idw[57];
 
 	if (idw[49] & 0x200) {
-		nsects = (idw[61] << 16) | idw[60];
+		nsects = ((__u32)idw[61] << 16) | idw[60];
 		if ((idw[83] & 0xc000) == 0x4000 && (idw[86] & 0x0400)) {
 			nsects = (__u64)idw[103] << 48 | (__u64)idw[102] << 32 |
 			         (__u64)idw[101] << 16 | idw[100];
@@ -703,14 +706,12 @@ static void interpret_xfermode (unsigned int xfermode)
 	printf(")\n");
 }
 
-static void *get_identify_data (int fd, void *prev);
-
-static unsigned int get_erase_timeout_secs (int fd, __u16 *id, int enhanced)
+static unsigned int get_erase_timeout_secs (int fd, int enhanced)
 {
 	unsigned int timeout = 0;
 	unsigned int idx = 89 + enhanced;
 
-	id = get_identify_data(fd, id);
+	get_identify_data(fd);
 	if (id) {
 		timeout = id[idx];
 		if (timeout && timeout <= 0xff) {
@@ -727,7 +728,7 @@ static unsigned int get_erase_timeout_secs (int fd, __u16 *id, int enhanced)
 }
 
 static void
-do_set_security (int fd, __u16 *id)
+do_set_security (int fd)
 {
 	int err = 0;
 	const char *description;
@@ -770,7 +771,7 @@ do_set_security (int fd, __u16 *id)
 			if (security_master) {
 				/* increment master-password revision-code */
 				__u16 revcode;
-				id = get_identify_data(fd, id);
+				get_identify_data(fd);
 				if (!id)
 					exit(EIO);
 				revcode = id[92];
@@ -805,7 +806,7 @@ do_set_security (int fd, __u16 *id)
 	 * assuming the segfault isn't followed by an oops.
 	 */
 	if (security_command == ATA_OP_SECURITY_ERASE_UNIT) {
-		unsigned int timeout = get_erase_timeout_secs(fd, id, enhanced_erase);
+		unsigned int timeout = get_erase_timeout_secs(fd, enhanced_erase);
 		__u8 args[4] = {ATA_OP_SECURITY_ERASE_PREPARE,0,0,0};
 		if (do_drive_cmd(fd, args, 0)) {   
 			err = errno;
@@ -851,14 +852,13 @@ do_set_security (int fd, __u16 *id)
 
 static __u8 last_identify_op = 0;
 
-static void *get_identify_data (int fd, void *prev)
+static void get_identify_data (int fd)
 {
 	static __u8 args[4+512];
-	__u16 *id = (void *)(args + 4);
 	int i;
 
-	if (prev != (void *)-1)
-		return prev;
+	if (id)
+		return;
 	memset(args, 0, sizeof(args));
 	last_identify_op = ATA_OP_IDENTIFY;
 	args[0] = last_identify_op;
@@ -872,13 +872,13 @@ static void *get_identify_data (int fd, void *prev)
 		args[3] = 1;	/* sector count */
 		if (do_drive_cmd(fd, args, 0)) {
 			perror(" HDIO_DRIVE_CMD(identify) failed");
-			return NULL;
+			return;
 		}
 	}
 	/* byte-swap the little-endian IDENTIFY data to match byte-order on host CPU */
+	id = (void *)(args + 4);
 	for (i = 0; i < 0x100; ++i)
 		__le16_to_cpus(&id[i]);
-	return id;
 }
 
 static void confirm_i_know_what_i_am_doing (const char *opt, const char *explanation)
@@ -901,13 +901,12 @@ static void confirm_please_destroy_my_drive (const char *opt, const char *explan
 	}
 }
 
-static int flush_wcache (int fd, __u16 **id_p)
+static int flush_wcache (int fd)
 {
 	__u8 args[4] = {ATA_OP_FLUSHCACHE,0,0,0};
-	__u16 *id;
 	int err = 0;
 
-	*id_p = id = get_identify_data(fd, *id_p);
+	get_identify_data(fd);
 	if (id && (id[83] & 0xe000) == 0x6000)
 		args[0] = ATA_OP_FLUSHCACHE_EXT;
 	if (do_drive_cmd(fd, args, timeout_60secs)) {
@@ -1019,7 +1018,7 @@ static __u16 *get_dco_identify_data (int fd, int quietly)
 	}
 }
 
-static __u64 do_get_native_max_sectors (int fd, __u16 *id)
+static __u64 do_get_native_max_sectors (int fd)
 {
 	int err = 0;
 	__u64 max = 0;
@@ -1036,6 +1035,9 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	r.iflags.lob.lbah     = 1;
 	r.lob.dev = 0x40;
 
+	get_identify_data(fd);
+	if (!id)
+		exit(EIO);
 	if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
 		r.iflags.hob.lbal  = 1;
 		r.iflags.hob.lbam  = 1;
@@ -1065,9 +1067,9 @@ static __u64 do_get_native_max_sectors (int fd, __u16 *id)
 	return max;
 }
 
-static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname)
+static int do_make_bad_sector (int fd, __u64 lba, const char *devname)
 {
-	int err = 0, has_write_unc;
+	int err = 0, has_write_unc = 0;
 	struct hdio_taskfile *r;
 	const char *flagged;
 
@@ -1079,8 +1081,10 @@ static int do_make_bad_sector (int fd, __u16 *id, __u64 lba, const char *devname
 		return err;
 	}
 
-	has_write_unc = (id[ 83] & 0xc000) == 0x4000 && (id[ 86] & 0x8000) == 0x8000
-		     && (id[119] & 0xc004) == 0x4004 && (id[120] & 0xc000) == 0x4000;
+	get_identify_data(fd);
+	if (id)
+		has_write_unc = (id[ 83] & 0xc000) == 0x4000 && (id[ 86] & 0x8000) == 0x8000
+			     && (id[119] & 0xc004) == 0x4004 && (id[120] & 0xc000) == 0x4000;
 
 	if (has_write_unc || make_bad_sector_flagged || lba >= lba28_limit) {
 		if (!has_write_unc) {
@@ -1258,14 +1262,13 @@ extract_id_string (__u16 *idw, int words, char *dst)
 }
 
 static int
-get_trim_dev_limit (void *id)
+get_trim_dev_limit (void)
 {
-	__u16 *idw = id;
 	char model[41];
 
-	if (idw[105] && idw[105] != 0xffff)
-		return idw[105];
-	extract_id_string(idw + 27, 20, model);
+	if (id[105] && id[105] != 0xffff)
+		return id[105];
+	extract_id_string(id + 27, 20, model);
 	if (0 == strcmp(model, "OCZ VERTEX-LE"))
 		return 8;
 	if (0 == strcmp(model, "OCZ-VERTEX"))
@@ -1274,16 +1277,18 @@ get_trim_dev_limit (void *id)
 }
 
 static int
-do_trim_from_stdin (int fd, const char *devname, void *id)
+do_trim_from_stdin (int fd, const char *devname)
 {
 	__u64 *data, range, nsectors = 0, lba_limit;
 	unsigned int max_kb, data_sects, data_bytes;
 	unsigned int total_ranges = 0, nranges = 0, max_ranges, dev_limit;
 	int err = 0;
 
-	id = get_identify_data(fd, id);
-	lba_limit = id ? get_lba_capacity(id) : (1ULL << 48) - 1;
-	dev_limit = get_trim_dev_limit(id);
+	get_identify_data(fd);
+	if (!id)
+		exit(EIO);
+	lba_limit = get_lba_capacity(id);
+	dev_limit = get_trim_dev_limit();
 
 	err = sysfs_get_attr(fd, "queue/max_sectors_kb", "%u", &max_kb, NULL, 0);
 	if (err || max_kb == 0)
@@ -1417,12 +1422,15 @@ static int do_idleunload (int fd, const char *devname)
 	return err;
 }
 
-static int do_set_max_sectors (int fd, __u16 *id, __u64 max_lba, int permanent)
+static int do_set_max_sectors (int fd, __u64 max_lba, int permanent)
 {
 	int err = 0;
 	struct hdio_taskfile r;
 	__u8 nsect = permanent ? 1 : 0;
 
+	get_identify_data(fd);
+	if (!id)
+		exit(EIO);
 	if ((max_lba >= lba28_limit) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
 	} else {
@@ -1431,7 +1439,7 @@ static int do_set_max_sectors (int fd, __u16 *id, __u64 max_lba, int permanent)
 	}
 
 	/* spec requires that we do this immediately in front.. racey */
-	if (!do_get_native_max_sectors(fd, id))
+	if (!do_get_native_max_sectors(fd))
 		return errno;
 
 	/* now set the new value */
@@ -1560,8 +1568,8 @@ void process_dev (char *devname)
 	int fd;
 	int err = 0;
 	static long parm, multcount;
-	__u16 *id = (void *)-1;
 
+	id = NULL;
 	fd = open(devname, open_flags);
 	if (fd < 0) {
 		err = errno;
@@ -1575,7 +1583,7 @@ void process_dev (char *devname)
 		if (num_flags_processed > 1 || argc)
 			usage_help(12,EINVAL);
 		confirm_please_destroy_my_drive("--trim-sector-ranges-stdin", "This might destroy the drive and/or all data on it.");
-		exit(do_trim_from_stdin(fd, devname, id));
+		exit(do_trim_from_stdin(fd, devname));
 	}
 
 	//if (set_wdidle3)
@@ -1835,7 +1843,7 @@ void process_dev (char *devname)
 			on_off(wcache);
 		}
 		if (!wcache)
-			err = flush_wcache(fd, &id);
+			err = flush_wcache(fd);
 		if (ioctl(fd, HDIO_SET_WCACHE, wcache)) {
 			__u8 setcache[4] = {ATA_OP_SETFEATURES,0,0,0};
 			setcache[2] = wcache ? 0x02 : 0x82;
@@ -1845,7 +1853,7 @@ void process_dev (char *devname)
 			}
 		}
 		if (!wcache)
-			err = flush_wcache(fd, &id);
+			err = flush_wcache(fd);
 	}
 	if (set_standbynow) {
 		__u8 args1[4] = {ATA_OP_STANDBYNOW1,0,0,0};
@@ -1882,7 +1890,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (set_security) {
-		do_set_security(fd, id);
+		do_set_security(fd);
 	}
 	if (do_dco_identify) {
 		__u16 *dco = get_dco_identify_data(fd, 0);
@@ -1945,19 +1953,19 @@ void process_dev (char *devname)
 	if (set_max_sectors) {
 		if (get_native_max_sectors)
 			printf(" setting max visible sectors to %llu (%s)\n", set_max_addr, set_max_permanent ? "permanent" : "temporary");
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			if (set_max_addr < get_lba_capacity(id))
 				confirm_i_know_what_i_am_doing("-Nnnnnn", "You have requested reducing the apparent size of the drive.\nThis is a BAD idea, and can easily destroy all of the drive's contents.");
-			err = do_set_max_sectors(fd, id, set_max_addr - 1, set_max_permanent);
-			id = (void *)-1; /* invalidate existing identify data */
+			err = do_set_max_sectors(fd, set_max_addr - 1, set_max_permanent);
+			id = NULL; /* invalidate existing identify data */
 		}
 	}
 	if (make_bad_sector) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			confirm_i_know_what_i_am_doing("--make-bad-sector", "You are trying to deliberately corrupt a low-level sector on the media.\nThis is a BAD idea, and can easily result in total data loss.");
-			err = do_make_bad_sector(fd, id, make_bad_sector_addr, devname);
+			err = do_make_bad_sector(fd, make_bad_sector_addr, devname);
 		}
 	}
 #ifdef FORMAT_AND_ERASE
@@ -1990,7 +1998,7 @@ void process_dev (char *devname)
 		abort_if_not_full_device (fd, 0, devname, "--fwdownload requires the raw device, not a partition.");
 		confirm_i_know_what_i_am_doing("--fwdownload", "This flag has not been tested with many drives to date.\nYou are trying to deliberately overwrite the drive firmware with the contents of the specified file.\nIf this fails, your drive could be toast.");
 		confirm_please_destroy_my_drive("--fwdownload", "This might destroy the drive and well as all of the data on it.");
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			err = fwdownload(fd, id, fwpath, xfer_mode);
 			if (err)
@@ -2000,7 +2008,7 @@ void process_dev (char *devname)
 	if (read_sector)
 		err = do_read_sector(fd, read_sector_addr, devname);
 	if (drq_hsm_error) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			__u8 args[4] = {0,0,0,0};
 			args[0] = last_identify_op;
@@ -2013,7 +2021,7 @@ void process_dev (char *devname)
 			fprintf(stderr, "ata status=0x%02x ata error=0x%02x\n", args[0], args[1]);
 		}
 	}
-	id = (void *)-1; /* force re-IDENTIFY in case something above modified settings */
+	id = NULL; /* force re-IDENTIFY in case something above modified settings */
 	if (get_hitachi_temp) {
 		__u8 args[4] = {0xf0,0,0x01,0}; /* "Sense Condition", vendor-specific */
 		if (do_drive_cmd(fd, args, 0)) {
@@ -2035,7 +2043,7 @@ void process_dev (char *devname)
 		err = 0;
 		if (ioctl(fd, HDIO_GET_MULTCOUNT, &multcount)) {
 			err = errno;
-			id = get_identify_data(fd, id);
+			get_identify_data(fd);
 			if (id) {
 				err = 0;
 				if ((id[59] & 0xff00) == 0x100)
@@ -2181,7 +2189,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (do_IDentity) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			if (do_IDentity == 2)
 				dump_sectors(id, 1);
@@ -2190,7 +2198,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_lookahead) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			int supported = id[82] & 0x0040;
 			if (supported) {
@@ -2203,7 +2211,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_wcache) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			int supported = id[82] & 0x0020;
 			if (supported) {
@@ -2216,10 +2224,10 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_apmmode) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			printf(" APM_level	= ");
-			if((id[83] & 0xc008) == 0x4008) {
+			if ((id[83] & 0xc008) == 0x4008) {
 				if (id[86] & 0x0008)
 					printf("%u\n", id[91] & 0xff);
 				else
@@ -2229,7 +2237,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_acoustic) {
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			int supported = id[83] & 0x200;
 			if (supported) 
@@ -2248,10 +2256,10 @@ void process_dev (char *devname)
 	}
 	if (get_native_max_sectors) {
 		__u64 visible, native;
-		id = get_identify_data(fd, id);
+		get_identify_data(fd);
 		if (id) {
 			visible = get_lba_capacity(id);
-			native  = do_get_native_max_sectors(fd, id);
+			native  = do_get_native_max_sectors(fd);
 			if (!native) {
 				err = errno;
 			} else {
@@ -2279,7 +2287,7 @@ void process_dev (char *devname)
 	if (do_ctimings)
 		time_cache(fd);
 	if (do_flush_wcache)
-		err = flush_wcache(fd, &id);
+		err = flush_wcache(fd);
 	if (do_timings)
 		err = time_device(fd);
 	if (do_flush)
