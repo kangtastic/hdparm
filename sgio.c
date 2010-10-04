@@ -167,7 +167,7 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	unsigned char cdb[SG_ATA_16_LEN];
 	unsigned char sb[32], *desc;
 	struct scsi_sg_io_hdr io_hdr;
-	int prefer12 = prefer_ata12;
+	int prefer12 = prefer_ata12, demanded_sense = 0;
 
 	if (tf->command == ATA_OP_PIDENTIFY)
 		prefer12 = 0;
@@ -184,10 +184,13 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	} else {
 		cdb[1] = data ? (rw ? SG_ATA_PROTO_PIO_OUT : SG_ATA_PROTO_PIO_IN) : SG_ATA_PROTO_NON_DATA;
 	}
-	cdb[ 2] = SG_CDB2_CHECK_COND;
+
+	/* libata/AHCI workaround: don't demand sense data for IDENTIFY commands */
 	if (data) {
 		cdb[2] |= SG_CDB2_TLEN_NSECT | SG_CDB2_TLEN_SECTORS;
 		cdb[2] |= rw ? SG_CDB2_TDIR_TO_DEV : SG_CDB2_TDIR_FROM_DEV;
+	} else {
+		cdb[2] = SG_CDB2_CHECK_COND;
 	}
 
 	if (!prefer12 || tf->is_lba48) {
@@ -277,7 +280,7 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 			static int second_try = 0;
 			if (!second_try++)
 				fprintf(stderr, "SG_IO: questionable sense data, results may be incorrect\n");
-		} else {
+		} else if (demanded_sense) {
 			static int second_try = 0;
 			if (!second_try++)
 				fprintf(stderr, "SG_IO: missing sense data, results may be incorrect\n");

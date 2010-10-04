@@ -1,3 +1,7 @@
+hdparm-9.33
+	- fix AHCI issues in sg16(): don't ask for sense_data on DATA-xfer commands
+	- fix compiler warnings on old systems
+	- fixed compilation on old systems lacking __be16
 hdparm-9.32
 	- fix b0rked (since 9.27?) SET_FEATURES commands; eg. -B, -M, etc..
 hdparm-9.31

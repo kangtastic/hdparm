@@ -103,9 +103,9 @@ static int sysfs_find_dev2 (char *path, dev_t dev, int recurse, int verbose)
 			sprintf(pathtail, "/%s", entry->d_name);
 			if (sysfs_read_attr(path, "/dev", "%u:%u", &maj, &min, verbose))
 				min = ~minor(dev);
-			else if (maj != major(dev))
+			else if (maj != (unsigned)major(dev))
 				continue;
-			if (min == minor(dev)
+			if (min == (unsigned)minor(dev)
 			 || (recurse && sysfs_find_dev2(path, dev, recurse - 1, verbose) == 0)) {
 				closedir(dp);
 				return 0;

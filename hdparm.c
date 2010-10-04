@@ -35,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.32"
+#define VERSION "v9.33"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -865,10 +865,9 @@ static void get_identify_data (int fd)
 	args[3] = 1;	/* sector count */
 	if (do_drive_cmd(fd, args, 0)) {
 		prefer_ata12 = 0;
+		memset(args, 0, sizeof(args));
 		last_identify_op = ATA_OP_PIDENTIFY;
 		args[0] = last_identify_op;
-		args[1] = 0;
-		args[2] = 0;
 		args[3] = 1;	/* sector count */
 		if (do_drive_cmd(fd, args, 0)) {
 			perror(" HDIO_DRIVE_CMD(identify) failed");
@@ -1249,7 +1248,7 @@ extract_id_string (__u16 *idw, int words, char *dst)
 
 	for (i = 0; i < words; ++i) {
 		__u16 w = idw[i];
-		w = (__u16)(__be16)(w);
+		w = __be16_to_cpu(w);
 		dst[i*2  ] = w >> 8;
 		dst[i*2+1] = w;
 	}

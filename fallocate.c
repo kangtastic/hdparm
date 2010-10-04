@@ -22,6 +22,7 @@ int do_fallocate_syscall (const char *path, __u64 bytecount)
 	int err;
 
 #ifndef SYS_fallocate
+	bytecount = 0;
 	fprintf(stderr, "Error: this copy of hdparm was built without %s support\n", path);
 	err = EINVAL;
 #else

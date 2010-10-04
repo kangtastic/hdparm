@@ -123,7 +123,7 @@ static int find_dev_in_directory (dev_t dev, const char *dir, char *path, int ve
 				if (verbose)
 					perror(path);
 			} else if (S_ISBLK(st.st_mode)) {
-				if (major(st.st_rdev) == maj && minor(st.st_rdev) == min) {
+				if (maj == (unsigned)major(st.st_rdev) && min == (unsigned)minor(st.st_rdev)) {
 					closedir(dp);
 					return 0;
 				}
