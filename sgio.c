@@ -352,10 +352,10 @@ int do_drive_cmd (int fd, unsigned char *args, unsigned int timeout_secs)
 		data_bytes = args[3] * 512;
 		data       = args + 4;
 	}
-	tf_init(&tf, args[0], 0, args[1]);
+	tf_init(&tf, args[0], 0, args[3]);  /* fixed bug: was args[1] here */
 	tf.lob.feat = args[2];
 	if (tf.command == ATA_OP_SMART) {
-		tf.lob.nsect = args[3];
+		//tf.lob.nsect = args[3];
 		tf.lob.lbal  = args[1];
 		tf.lob.lbam  = 0x4f;
 		tf.lob.lbah  = 0xc2;

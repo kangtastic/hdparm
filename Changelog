@@ -1,3 +1,5 @@
+hdparm-9.34
+	- fix bad/missing cdb transfer length field for IDENTIFY and some other commands
 hdparm-9.33
 	- fix AHCI issues in sg16(): don't ask for sense_data on DATA-xfer commands
 	- fix compiler warnings on old systems

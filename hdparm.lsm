@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	9.33
-Entered-date:	2010-10-04
+Version:	9.34
+Entered-date:	2010-10-16
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.34 Fixed CDB transfer length bug that affected some commands
 		v9.33 Fixed AHCI issues; fixed compilation on older systems
 		v9.32 Fixed various commands broken since 9.27.  Eg. -B, -M, etc..
 		v9.31 Fixed security-erase issues; changed default of --user-master to user
@@ -107,7 +108,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		117K hdparm-9.33.tar.gz
+		117K hdparm-9.34.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux
 Copying-policy:	BSD License
