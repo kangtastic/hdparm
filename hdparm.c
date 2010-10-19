@@ -35,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.34"
+#define VERSION "v9.35"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -47,15 +47,6 @@ extern const char *minor_str[];
 
 #define TIMING_BUF_MB		2
 #define TIMING_BUF_BYTES	(TIMING_BUF_MB * 1024 * 1024)
-
-#ifndef ATA_OP_SECURITY_FREEZE_LOCK
-	#define ATA_OP_SECURITY_SET_PASS	0xF1
-	#define ATA_OP_SECURITY_UNLOCK		0xF2
-	#define ATA_OP_SECURITY_ERASE_PREPARE	0xF3
-	#define ATA_OP_SECURITY_ERASE_UNIT	0xF4
-	#define ATA_OP_SECURITY_FREEZE_LOCK	0xF5
-	#define ATA_OP_SECURITY_DISABLE		0xF6
-#endif
 
 char *progname;
 int verbose = 0;
@@ -1484,7 +1475,7 @@ static void usage_help (int clue, int rc)
 	" -P   Set drive prefetch count\n"
 	" -q   Change next setting quietly\n"
 	" -Q   Get/set DMA queue_depth (if supported)\n"
-	" -r   Get/set device  readonly flag (DANGEROUS to set)\n"
+	" -r   Get/set device readonly flag (DANGEROUS to set)\n"
 	" -R   Obsolete\n"
 	" -s   Set power-up in standby flag (0/1) (DANGEROUS)\n"
 	" -S   Set standby (spindown) timeout\n"
@@ -1721,7 +1712,7 @@ void process_dev (char *devname)
 		}
 	}
 	if (set_defects) {
-		__u8 args[4] = {ATA_OP_SETFEATURES,0,0x04,0};
+		__u8 args[4] = {ATA_OP_SETFEATURES,0,0,0};
 		args[2] = defects ? 0x04 : 0x84;
 		if (get_defects)
 			printf(" setting drive defect management to %d\n", defects);

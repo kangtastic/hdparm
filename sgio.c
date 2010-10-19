@@ -55,6 +55,30 @@ static const int default_timeout_secs = 15;
  *	SG_DXFER_TO_DEV, SG_DXFER_FROM_DEV, SG_DXFER_NONE
  */
 
+#if 0  /* maybe use this in sg16 later.. ? */
+static inline int get_rw (__u8 ata_op)
+{
+	switch (ata_op) {
+		case ATA_OP_DSM:
+		case ATA_OP_WRITE_PIO:
+		case ATA_OP_WRITE_LONG:
+		case ATA_OP_WRITE_LONG_ONCE:
+		case ATA_OP_WRITE_PIO_EXT:
+		case ATA_OP_WRITE_DMA_EXT:
+		case ATA_OP_WRITE_FPDMA:
+		case ATA_OP_WRITE_UNC_EXT:
+		case ATA_OP_WRITE_DMA:
+		case ATA_OP_SECURITY_UNLOCK:
+		case ATA_OP_SECURITY_DISABLE:
+		case ATA_OP_SECURITY_ERASE_UNIT:
+		case ATA_OP_SECURITY_SET_PASS:
+			return SG_WRITE;
+		default:
+			return SG_READ;
+	}
+}
+#endif
+
 static inline int needs_lba48 (__u8 ata_op, __u64 lba, unsigned int nsect)
 {
 	switch (ata_op) {
@@ -347,15 +371,22 @@ int do_drive_cmd (int fd, unsigned char *args, unsigned int timeout_secs)
 		goto use_legacy_ioctl;
 	/*
 	 * Reformat and try to issue via SG_IO:
+	 * args[0]: command in; status out.
+	 * args[1]: lbal for SMART, nsect for all others; error out
+	 * args[2]: feat in; nsect out.
+	 * args[3]: data-count (512 multiple) for all cmds.
 	 */
-	if (args[3] && args[0] != ATA_OP_SETFEATURES) {
-		data_bytes = args[3] * 512;
-		data       = args + 4;
+	tf_init(&tf, args[0], 0, 0);
+	tf.lob.nsect = args[1];
+	tf.lob.feat  = args[2];
+	if (args[3]) {
+		data_bytes   = args[3] * 512;
+		data         = args + 4;
+		if (!tf.lob.nsect)
+			tf.lob.nsect = args[3];
 	}
-	tf_init(&tf, args[0], 0, args[3]);  /* fixed bug: was args[1] here */
-	tf.lob.feat = args[2];
 	if (tf.command == ATA_OP_SMART) {
-		//tf.lob.nsect = args[3];
+		tf.lob.nsect = args[3];
 		tf.lob.lbal  = args[1];
 		tf.lob.lbam  = 0x4f;
 		tf.lob.lbah  = 0xc2;

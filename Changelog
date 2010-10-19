@@ -1,3 +1,5 @@
+hdparm-9.35
+	- third go at fixing cdb issues, fixing -B flag.  Got it this time (finally).
 hdparm-9.34
 	- fix bad/missing cdb transfer length field for IDENTIFY and some other commands
 hdparm-9.33
