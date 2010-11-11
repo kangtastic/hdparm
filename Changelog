@@ -1,3 +1,8 @@
+hdparm-9.36
+	- udpated raid1ext4trim.sh script to version 1.4
+	- updated wiper.sh to support hfsplus and ntfs filesystem types, courtesy of Heiko Wegeler
+	- updated wiper.sh with new flag to enable unattended operation, and handle SIGPIPE
+	- updated manpage to indicate max sector range of 65335 for TRIM
 hdparm-9.35
 	- third go at fixing cdb issues, fixing -B flag.  Got it this time (finally).
 hdparm-9.34

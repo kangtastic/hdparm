@@ -21,6 +21,9 @@ DO NOT USE THIS SCRIPT if you cannot afford losing your data!!
 This script works for read-write mounted ext4 and xfs filesystems,
 and for read-only mounted/unmounted ext2, ext3, ext4, reiser3 and xfs filesystems.
 
+As of Version 3.1, hfsplus and ntfs filesystem types are also supported,
+but this code has not been widely tested yet.  BE CAREFUL!
+
 Invoke the script with the pathname to the mounted filesystem
 or the block device path for the filesystem.
 

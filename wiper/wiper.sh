@@ -1,10 +1,13 @@
 #!/bin/bash
 #
-# SATA SSD free-space TRIM utility, by Mark Lord
+# SATA SSD free-space TRIM utility, by Mark Lord <mlord@pobox.com>
 
-VERSION=2.8
+VERSION=3.1
  
 # Copyright (C) 2009-2010 Mark Lord.  All rights reserved.
+#
+# Contains hfsplus and ntfs code contributed by Heiko Wegeler <heiko.wegeler@googlemail.com>.
+# Package sleuthkit version >=3.1.1 is required for HFS+. Package ntfs-3g and ntfsprogs is required for NTFS.
 #
 # Requires gawk, a really-recent hdparm, and various other programs.
 # This needs to be redone entirely in C, for 64-bit math, someday.
@@ -48,11 +51,14 @@ echo "${0##*/}: Linux SATA SSD TRIM utility, version $VERSION, by Mark Lord."
 
 export verbose=0
 commit=""
+destroy_me=""
 argc=$#
 arg=""
 while [ $argc -gt 0 ]; do
 	if [ "$1" = "--commit" ]; then
 		commit=yes
+	elif [ "$1" = "--please-prematurely-wear-out-my-ssd" ]; then
+		destroy_me=yes
 	elif [ "$1" = "--verbose" ]; then
 		verbose=$((verbose + 1))
 	elif [ "$1" = "" ]; then
@@ -77,7 +83,7 @@ function find_prog(){
 		prog="${prog##*/}"
 		p=`type -f -P "$prog" 2>/dev/null`
 		if [ "$p" = "" ]; then
-			echo "$1: needed but not found, aborting." >&2
+			[ "$2" != "quiet" ] && echo "$1: needed but not found, aborting." >&2
 			exit 1
 		fi
 		prog="$p"
@@ -94,7 +100,6 @@ FIND=`find_prog /usr/bin/find`	|| exit 1
 STAT=`find_prog /usr/bin/stat`	|| exit 1
 GAWK=`find_prog /usr/bin/gawk`	|| exit 1
 BLKID=`find_prog /sbin/blkid`	|| exit 1
-RDEV=`find_prog /usr/sbin/rdev`	|| exit 1
 GREP=`find_prog /bin/grep`	|| exit 1
 ID=`find_prog /usr/bin/id`	|| exit 1
 LS=`find_prog /bin/ls`		|| exit 1
@@ -235,14 +240,25 @@ function get_fsmode(){  ## from fsdir
 	fi
 }
 
-## Use $DF to determine the device name associated with the root filesystem.
+## Try and determine the device name associated with the root filesystem.
+## This is nearly impossible to do in any perfect fashion.
 ##
-## This *usually* works, but on some distros it just returns "/dev/root",
-## and "/dev/root" does not actually exist.  We leave it like that for now,
+## rdev *usually* works, but on some distros it just returns "/dev/root",
+## and "/dev/root" is not a real path.  We leave it like that for now,
 ## because that's the pattern such systems also use in /proc/mounts.
 ## Later, at time of use, we'll try harder to find the real rootdev.
 ##
-rootdev=`$RDEV | $GAWK '{print $1}'`
+## Redhat/Fedora no longer have an rdev command.  Silly them.
+## So we first look for rdev quietly, then look for the Fedora "lv_root",
+## and finally fall back to demanding rdev.
+##
+RDEV=`find_prog /usr/sbin/rdev quiet`
+if [ "$RDEV" == "" -a -e '/dev/mapper/VolGroup-lv_root' ]; then
+	rootdev='/dev/mapper/VolGroup-lv_root'  ## Redhat/Fedora
+else
+	RDEV=`find_prog /usr/sbin/rdev`	|| exit 1
+	rootdev=`$RDEV | $GAWK '{print $1}'`
+fi
 [ $verbose -gt 0 ] && echo "rootdev=$rootdev"
 
 ## The user gave us a directory (mount point) to TRIM,
@@ -490,12 +506,71 @@ else
 		get_trimlist="xfs_trimlist"
 	elif [ "$fstype" = "reiserfs" ]; then
 		DEBUGREISERFS=`find_prog /sbin/debugreiserfs` || exit 1
-		( $DEBUGREISERFS $fsdev | grep '^Filesystem state:.consistent' ) &> /dev/null
+		( $DEBUGREISERFS $fsdev | $GREP '^Filesystem state:.consistent' ) &> /dev/null
 		if [ $? -ne 0 ]; then
 			echo "Please run fsck.reiserfs first, aborting." >&2
 			exit 1
 		fi
 		get_trimlist="$DEBUGREISERFS -m $fsdev"
+	elif [ "$fstype" = "hfsplus" ]; then
+		OD=`find_prog /usr/bin/od` || exit 1
+		TR=`find_prog /usr/bin/tr` || exit 1
+		#check sleuthkit
+		FSSTAT=`find_prog /usr/local/bin/fsstat` 
+		if [ "$?" = "1" ]; then
+			echo "fsstat and icat from package sleuthkit >= 3.1.1 is required for hfsplus."
+			exit 1
+		fi
+		ICAT=`find_prog /usr/local/bin/icat` 
+		if [ "`$ICAT -f list 2>/dev/stdout|$GREP HFS+`" = "" ]; then
+                        echo "Wrong icat, version from package sleuthkit >= 3.1.1 is required for hfsplus."
+                        exit 1
+                fi
+		#check for unmounted properly
+		if [ "`$FSSTAT -f hfs $fsdev | $GREP "Volume Unmounted Properly"`" = ""  ]; then
+			echo "Hfsplus volume unmounted improperly!"
+			exit 1
+		fi
+		#check $AllocationFile inode
+		FFIND=`find_prog /usr/local/bin/ffind`
+		if [ "`$FFIND -f hfs $fsdev 6`" != "/\$AllocationFile" ]; then
+			echo "Hfsplus bitmap \$AllocationFile is not inode 6!"
+			exit 1
+		fi
+		#get offset for hfsplus with a wrapper
+		hfsoffset=`$FSSTAT -f hfs $fsdev | $GREP "File system is embedded in an HFS wrapper at offset "|$TR -d "\t"`
+		if [ -n "$hfsoffset" ]; then
+			hfsoffset=${hfsoffset:52}
+			((fsoffset=fsoffset+hfsoffset))
+			echo "File system is embedded in an HFS wrapper at offset $hfsoffset"
+		fi
+		blksize=`$FSSTAT -f hfs $fsdev | $GREP "Allocation Block Size: "|$TR -d "\t"`
+		blksize=${blksize:23}
+		blksects=$((blksize / 512))
+		method="bitmap_offline"
+		get_trimlist="echo $blksects hfsplus `$ICAT -f hfs $fsdev 6 | $OD -An -vtu1 -j0 -w1`"
+	elif [ "$fstype" = "ntfs" ]; then
+		NTFSINFO=`find_prog /usr/bin/ntfsinfo` || exit 1
+		NTFSCAT=`find_prog /usr/bin/ntfscat` || exit 1
+		NTFSPROBE=`find_prog /usr/bin/ntfs-3g.probe` || exit 1
+		OD=`find_prog /usr/bin/od` || exit 1
+		TR=`find_prog /usr/bin/tr` || exit 1
+		#check for unmounted properly
+		$NTFSPROBE -w $fsdev 2>/dev/null
+		if [ $? -ne 0 ]; then
+			echo "$fsdev contains an unclean file system!"
+			exit 1
+		fi
+		#check for volume version
+		if [ "`$NTFSINFO -m -f $fsdev | $GREP "Volume Version: 3.1"`" = "" ]; then
+			echo "NTFS volume version must be 3.1!"
+			exit 1
+		fi
+		blksize=`$NTFSINFO -m -f $fsdev | $GREP "Cluster Size: " | $TR -d "\t"`
+		blksize=${blksize:14}
+		blksects=$((blksize / 512))
+		method="bitmap_offline"
+		get_trimlist="echo $blksects ntfs `$NTFSCAT $fsdev \\\$Bitmap | $OD -An -vtu1 -j0 -w1`"
 	fi
 	if [ "$get_trimlist" = "" ]; then
 		echo "$target: offline TRIM not supported for $fstype filesystems, aborting." >&2
@@ -512,12 +587,14 @@ echo "Preparing for $method TRIM of free space on $fsdev ($mountstatus)."
 ## If they specified "--commit" on the command line, then prompt for confirmation first:
 ##
 if [ "$commit" = "yes" ]; then
-	echo >/dev/tty
-	echo -n "This operation could silently destroy your data.  Are you sure (y/N)? " >/dev/tty
-	read yn < /dev/tty
-	if [ "$yn" != "y" -a "$yn" != "Y" ]; then
-		echo "Aborting." >&2
-		exit 1
+	if [ "$destroy_me" = "" ]; then
+		echo >/dev/tty
+		echo -n "This operation could silently destroy your data.  Are you sure (y/N)? " >/dev/tty
+		read yn < /dev/tty
+		if [ "$yn" != "y" -a "$yn" != "Y" ]; then
+			echo "Aborting." >&2
+			exit 1
+		fi
 	fi
 	TRIM="$HDPARM --please-destroy-my-drive --trim-sector-ranges-stdin $rawdev"
 else
@@ -558,6 +635,7 @@ trap do_abort SIGTERM
 trap do_abort SIGQUIT
 trap do_abort SIGINT
 trap do_abort SIGHUP
+trap do_abort SIGPIPE
 
 ## For online TRIM, go ahead and create the huge temporary file.
 ## This is where we finally discover whether the filesystem actually
@@ -629,6 +707,59 @@ GAWKPROG='
 		if (NF == 3 && gensub("[0-9 ]","","g",$0) == "" && $1 < agcount) {
 			lba   = agoffset[1 + $1] + ($2 * xfs_blksects) + fsoffset
 			count = $3 * xfs_blksects
+			append_range(lba,count)
+		}
+		next
+	}
+	(method == "bitmap_offline") {
+		n = split($0,f)
+		blksects = f[1]
+		fstype = f[2]
+		bitmap_start = 3
+		range_first = -1 #clusters
+		range_last = -1
+		for (i = bitmap_start; i <= n-1; i++) {
+			if (f[i] == 0) {
+				if (range_first == -1)
+					range_first = (i-bitmap_start) * 8 
+				range_last = (i-bitmap_start) * 8 + 7
+			} else if (f[i] == 255 && range_first > -1){
+				#printf range_first "-" range_last "\n" > "/dev/stderr"
+				lba = (range_first * blksects) + fsoffset
+				count = (range_last - range_first + 1) * blksects
+				append_range(lba,count)
+				range_first = -1
+				range_last = -1
+			} else {
+				for (b = 0; b < 8; b++) {
+					if (fstype == "ntfs")
+						bit = and(f[i], lshift(1, b)) ? 1 : 0
+					else #hfsplus
+						bit = and(f[i], lshift(1, 7-b)) ? 1 : 0
+					if (bit == 0) {
+						if (range_first == -1) {
+							range_first = (i-bitmap_start) * 8 + b
+							range_last = (i-bitmap_start) * 8 + b
+						} else
+							range_last += 1
+					} else if (range_first > -1) {
+						#printf range_first "-" range_last " " > "/dev/stderr"
+						lba = (range_first * blksects) + fsoffset
+						count = (range_last - range_first + 1) * blksects
+						if (fstype == "ntfs")
+							append_range(lba,count)
+						else if (count > (2 * blksects)) #faster for hfsplus
+							append_range(lba,count)
+						range_first = -1
+						range_last = -1
+					}
+				}
+			}
+		}
+		if (range_first > -1){
+			#printf range_first "-" range_last " " > "/dev/stderr"
+			lba = (range_first * blksects) + fsoffset
+			count = (range_last - range_first + 1) * blksects
 			append_range(lba,count)
 		}
 		next

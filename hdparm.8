@@ -1,4 +1,4 @@
-.TH HDPARM 8 "October 2010" "Version 9.35"
+.TH HDPARM 8 "November 2010" "Version 9.36"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -598,7 +598,7 @@ been present within them.  This makes those sectors available for
 immediate use by the firmware's garbage collection mechanism, to
 improve scheduling for wear-leveling of the flash media.
 This option expects one or more sector range pairs immediately after the option:
-an LBA starting address, a colon, and a sector count, with no intervening spaces.
+an LBA starting address, a colon, and a sector count (max 65535), with no intervening spaces.
 .B EXCEPTIONALLY DANGEROUS.  DO NOT USE THIS OPTION!!
 .IP
 E.g.

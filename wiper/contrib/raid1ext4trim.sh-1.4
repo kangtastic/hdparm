@@ -4,7 +4,7 @@
 #
 # By Chris Caputo.  Adapted from wiper.sh (ver 2.6) by Mark Lord.
 
-VERSION=1.3
+VERSION=1.4
 
 # Copyright (C) 2010 Chris Caputo.  All rights reserved.
 #
@@ -217,8 +217,11 @@ tmpfile="$fsdir/${0##*/}_TMPFILE.$$"
 ##
 function do_cleanup(){
 	if [ -e $tmpfile ]; then
-		echo "Removing temporary file..."
+		echo "Removing temporary file '$tmpfile'..."
 		$RM -f $tmpfile
+		if [ -e $tmpfile ]; then
+			echo "Failed to remove '$tmpfile'!!!"
+		fi
 	fi
 	[ $1 -eq 0 ] && echo "Done."
 	[ $1 -eq 0 ] || echo "Aborted." >&2
@@ -235,6 +238,7 @@ trap do_abort SIGTERM
 trap do_abort SIGQUIT
 trap do_abort SIGINT
 trap do_abort SIGHUP
+trap do_abort SIGPIPE
 
 ## Do the fallocate.
 ## This is where we finally discover whether the filesystem actually
@@ -243,7 +247,7 @@ trap do_abort SIGHUP
 ## Note that --fallocate does not actually write any file data to fsdev,
 ## but rather simply allocates formerly-free space to the tmpfile.
 ##
-echo -n "Creating temporary file (${tmpsize} KB) ... "
+echo -n "Creating temporary file (${tmpsize} KB '$tmpfile') ... "
 if ! $HDPARM --fallocate "${tmpsize}" $tmpfile ; then
 	echo "This kernel may not support 'fallocate'.  Aborting."
 	exit 1
