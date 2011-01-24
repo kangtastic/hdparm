@@ -35,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.36"
+#define VERSION "v9.37"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -935,11 +935,13 @@ static int abort_if_not_full_device (int fd, __u64 lba, const char *devname, con
 
 	if (start_lba == 0ULL)
 		return 0;
-	if (msg) {
+	if (start_lba == START_LBA_UNKNOWN || fd_is_raid(fd)) {
+		fprintf(stderr, "%s is a RAID device: please specify an absolute LBA of a raw member device instead (raid1 only)\n", devname);
+	} else if (msg) {
 		fprintf(stderr, "%s\n", msg);
 	} else {
 		fprintf(stderr, "Device %s has non-zero LBA starting offset of %llu.\n", devname, start_lba);
-		fprintf(stderr, "Please use an absolute LBA with the /dev/ entry for the full device, rather than a partition name.\n");
+		fprintf(stderr, "Please use an absolute LBA with the /dev/ entry for the raw device, rather than a partition or raid name.\n");
 		fprintf(stderr, "%s is probably a partition of %s (?)\n", devname, fdevname);
 		fprintf(stderr, "The absolute LBA of sector %llu from %s should be %llu\n", lba, devname, start_lba + lba);
 	}
@@ -2139,9 +2141,13 @@ void process_dev (char *devname)
 		__u32 cyls = 0, heads = 0, sects = 0;
 		__u64 start_lba = 0, nsectors = 0;
 		err = get_dev_geometry (fd, &cyls, &heads, &sects, &start_lba, &nsectors);
-		if (!err)
-			printf(" geometry      = %u/%u/%u, sectors = %lld, start = %lld\n",
-				cyls, heads, sects, nsectors, start_lba);
+		if (!err) {
+			printf(" geometry      = %u/%u/%u, sectors = %lld, start = ", cyls, heads, sects, nsectors);
+			if (start_lba == START_LBA_UNKNOWN)
+				printf("unknown\n");
+			else
+				printf("%lld\n", start_lba);
+		}
 	}
 	if (get_powermode) {
 		__u8 args[4] = {ATA_OP_CHECKPOWERMODE1,0,0,0};

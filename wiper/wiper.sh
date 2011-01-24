@@ -2,8 +2,8 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord <mlord@pobox.com>
 
-VERSION=3.1
- 
+VERSION=3.3 
+
 # Copyright (C) 2009-2010 Mark Lord.  All rights reserved.
 #
 # Contains hfsplus and ntfs code contributed by Heiko Wegeler <heiko.wegeler@googlemail.com>.
@@ -105,6 +105,7 @@ ID=`find_prog /usr/bin/id`	|| exit 1
 LS=`find_prog /bin/ls`		|| exit 1
 DF=`find_prog /bin/df`		|| exit 1
 RM=`find_prog /bin/rm`		|| exit 1
+STAT=`find_prog /usr/bin/stat`	|| exit 1
 
 [ $verbose -gt 1 ] && HDPARM="$HDPARM --verbose"
 
@@ -243,22 +244,27 @@ function get_fsmode(){  ## from fsdir
 ## Try and determine the device name associated with the root filesystem.
 ## This is nearly impossible to do in any perfect fashion.
 ##
-## rdev *usually* works, but on some distros it just returns "/dev/root",
-## and "/dev/root" is not a real path.  We leave it like that for now,
+## Redhat/Fedora no longer have an rdev command.  Silly them.
+## So we now implement it internally, below.
+##
+## match_rootdev *should* work, but on some distros it may find only "/dev/root",
+## and "/dev/root" is not usually a real device.  We leave it like that for now,
 ## because that's the pattern such systems also use in /proc/mounts.
 ## Later, at time of use, we'll try harder to find the real rootdev.
 ##
-## Redhat/Fedora no longer have an rdev command.  Silly them.
-## So we first look for rdev quietly, then look for the Fedora "lv_root",
-## and finally fall back to demanding rdev.
-##
-RDEV=`find_prog /usr/sbin/rdev quiet`
-if [ "$RDEV" == "" -a -e '/dev/mapper/VolGroup-lv_root' ]; then
-	rootdev='/dev/mapper/VolGroup-lv_root'  ## Redhat/Fedora
-else
-	RDEV=`find_prog /usr/sbin/rdev`	|| exit 1
-	rootdev=`$RDEV | $GAWK '{print $1}'`
-fi
+function match_rootdev() {
+	rdev=""
+	rdevno="$1"
+	while read bdev ; do
+		if [ "$rdev" = "" -o "$bdev" != "/dev/root" ]; then
+			devno=$($STAT -c "0x%t%02T" "$bdev" 2>/dev/null)
+			[ "$devno" = "$rdevno" ] && rdev="$bdev"
+		fi
+	done
+	echo -n "$rdev"
+}
+
+rootdev=$($FIND /dev/ -type b 2>/dev/null | match_rootdev $($STAT -c "0x%D" '/'))
 [ $verbose -gt 0 ] && echo "rootdev=$rootdev"
 
 ## The user gave us a directory (mount point) to TRIM,
@@ -547,8 +553,13 @@ else
 		blksize=`$FSSTAT -f hfs $fsdev | $GREP "Allocation Block Size: "|$TR -d "\t"`
 		blksize=${blksize:23}
 		blksects=$((blksize / 512))
+		#get count of used bytes in $AllocationFile
+		blkcount=`$FSSTAT -f hfs $fsdev | $GREP "Block Range: 0 - "`
+		blkcount=${blkcount:17}
+		bytecount=$((blkcount/blksects))
+		
 		method="bitmap_offline"
-		get_trimlist="echo $blksects hfsplus `$ICAT -f hfs $fsdev 6 | $OD -An -vtu1 -j0 -w1`"
+		get_trimlist="echo $blksects hfsplus `$ICAT -f hfs $fsdev 6 | $OD -N $bytecount -An -vtu1 -j0 -w1`"
 	elif [ "$fstype" = "ntfs" ]; then
 		NTFSINFO=`find_prog /usr/bin/ntfsinfo` || exit 1
 		NTFSCAT=`find_prog /usr/bin/ntfscat` || exit 1
@@ -569,8 +580,13 @@ else
 		blksize=`$NTFSINFO -m -f $fsdev | $GREP "Cluster Size: " | $TR -d "\t"`
 		blksize=${blksize:14}
 		blksects=$((blksize / 512))
+		#get count of used bytes in $Bitmap
+		blkcount=`$NTFSINFO -m -f $fsdev | $GREP "Volume Size in Clusters: " | $TR -d "\t"`
+		blkcount=${blkcount:25}
+		bytecount=$((blkcount/blksects))
+
 		method="bitmap_offline"
-		get_trimlist="echo $blksects ntfs `$NTFSCAT $fsdev \\\$Bitmap | $OD -An -vtu1 -j0 -w1`"
+		get_trimlist="echo $blksects ntfs `$NTFSCAT $fsdev \\\$Bitmap | $OD -N $bytecount -An -vtu1 -j0 -w1`"
 	fi
 	if [ "$get_trimlist" = "" ]; then
 		echo "$target: offline TRIM not supported for $fstype filesystems, aborting." >&2

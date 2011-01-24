@@ -248,6 +248,11 @@ int do_filemap (const char *file_name)
 		close(fd);
 		return err;
 	}
+	if (start_lba == START_LBA_UNKNOWN) {
+		fprintf(stderr, "Unable to determine start offset LBA for device, aborting.\n");
+		close(fd);
+		return EIO;
+	}
 
 	sectors_per_block = st.st_blksize / sector_bytes;
 	printf("\n%s:\n filesystem blocksize %lu, begins at LBA %llu;"

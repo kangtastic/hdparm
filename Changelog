@@ -1,3 +1,8 @@
+hdparm-9.37
+	- handle raid1 start_lba values, and show -1 for indeterminte raid start_lba values
+	- abort --fibmap when start_lba is indeterminate
+	- updated wiper.sh to fix a kink with hfsplus filesystems
+	- updated wiper.sh to no longer rely on the obsolete "rdev" command
 hdparm-9.36
 	- udpated raid1ext4trim.sh script to version 1.4
 	- updated wiper.sh to support hfsplus and ntfs filesystem types, courtesy of Heiko Wegeler

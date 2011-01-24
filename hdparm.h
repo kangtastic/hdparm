@@ -23,6 +23,7 @@ int do_fallocate_syscall (const char *name, __u64 bytecount);
 int fwdownload(int fd, __u16 *id, const char *fwpath, int xfer_mode);
 void dco_identify_print (__u16 *dco);
 int set_dvdspeed(int fd, int speed);
+int fd_is_raid (int fd);
 
 extern const char *BuffType[4];
 
@@ -74,6 +75,8 @@ enum {	/* ioctl() numbers */
 	HDIO_UNREGISTER_HWIF	= 0x032a,
 	CDROM__SPEED		= 0x5322,
 };
+
+#define START_LBA_UNKNOWN	(~0ull)
 
 /* Some systems define BLKGETSIZE64 with a "u64" arg,
  * but without supplying a typedef for u64.
