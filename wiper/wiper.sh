@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord <mlord@pobox.com>
 
-VERSION=3.3 
+VERSION=3.4 
 
 # Copyright (C) 2009-2010 Mark Lord.  All rights reserved.
 #
@@ -370,15 +370,24 @@ elif [ ! -b "$rawdev" ]; then
 	rawdev=""
 elif [ "`get_major $fsdev`" -ne "`get_major $rawdev`" ]; then  ## sanity check
 	rawdev=""
-elif [ "`get_major $fsdev`" -ne "8" ]; then ## "SCSI" drives only; no LVM confusion for now
-	echo "$rawdev: does not appear to be a SCSI/SATA SSD, aborting." >&2
-	exit 1
-elif ! $HDPARM -I $rawdev | $GREP -i '[ 	][*][ 	]*Data Set Management TRIM supported' &>/dev/null ; then
-	if [ "$commit" = "yes" ]; then
-		echo "$rawdev: DSM/TRIM command not supported, aborting." >&2
+else
+	## "SCSI" drives only; no LVM confusion for now:
+	maj="$(get_major $fsdev)"
+	maj_ok=0
+	for scsi_major in 8 65 66 67 68 69 70 71 ; do
+		[ "$maj" = "$scsi_major" ] && maj_ok=1
+	done
+	if [ $maj_ok -eq 0 ]; then
+		echo "$rawdev: does not appear to be a SCSI/SATA SSD, aborting." >&2
 		exit 1
 	fi
-	echo "$rawdev: DSM/TRIM command not supported (continuing with dry-run)." >&2
+	if ! $HDPARM -I $rawdev | $GREP -i '[ 	][*][ 	]*Data Set Management TRIM supported' &>/dev/null ; then
+		if [ "$commit" = "yes" ]; then
+			echo "$rawdev: DSM/TRIM command not supported, aborting." >&2
+			exit 1
+		fi
+		echo "$rawdev: DSM/TRIM command not supported (continuing with dry-run)." >&2
+	fi
 fi
 if [ "$rawdev" = "" ]; then
 	echo "$fsdev: unable to reliably determine the underlying physical device name, aborting" >&2

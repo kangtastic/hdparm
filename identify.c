@@ -1330,8 +1330,20 @@ void identify (__u16 *id_supplied)
 		kk =  val[ENH_ERASE_TIME];
 		if((jj && jj <= 0x00ff) || (kk && kk <= 0x00ff)) {
 			printf("\t");
-			if(jj) printf("%umin for SECURITY ERASE UNIT. ",         (jj == 0xff) ? 508 : (jj * 2));
-			if(kk) printf("%umin for ENHANCED SECURITY ERASE UNIT.", (kk == 0xff) ? 508 : (kk * 2));
+			if (jj) {
+				if (jj == 0xff)
+					printf("more than 508");
+				else
+					printf("%u", jj * 2);
+				printf("min for SECURITY ERASE UNIT. ");
+			}
+			if (kk) {
+				if (kk == 0xff)
+					printf("more than 508");
+				else
+					printf("%u", kk * 2);
+				printf("min for ENHANCED SECURITY ERASE UNIT. ");
+			}
 			printf("\n");
 		}
 	}

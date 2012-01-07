@@ -1,3 +1,7 @@
+9.37+
+	- updated wiper.sh to allow all SCSI_DISK major numbers
+	- updated handing for very long SECURITY-ERASE times
+	- added -J flag for wdidle3 set/get
 hdparm-9.37
 	- handle raid1 start_lba values, and show -1 for indeterminte raid start_lba values
 	- abort --fibmap when start_lba is indeterminate

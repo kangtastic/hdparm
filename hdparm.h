@@ -25,6 +25,11 @@ void dco_identify_print (__u16 *dco);
 int set_dvdspeed(int fd, int speed);
 int fd_is_raid (int fd);
 
+int  wdidle3_set_timeout (int fd, unsigned char timeout);
+int  wdidle3_get_timeout (int fd, unsigned char *timeout);
+void wdidle3_print_timeout (unsigned char timeout);
+unsigned char wdidle3_msecs_to_timeout (unsigned int msecs);
+
 extern const char *BuffType[4];
 
 struct local_hd_big_geometry {

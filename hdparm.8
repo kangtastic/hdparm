@@ -1,4 +1,4 @@
-.TH HDPARM 8 "November 2010" "Version 9.36"
+.TH HDPARM 8 "January 2012" "Version 9.38"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -307,6 +307,31 @@ in a format similar to that from /proc/ide/*/identify, and suitable for
 later use with the
 .B --Istdin
 option.
+.TP
+.I -J
+Get/set the Western Digital (WD) Green Drive's "idle3" timeout value.
+This timeout controls how often the drive parks its heads and enters
+a low power consumption state.  The factory default is eight (8) seconds,
+which is a very poor choice for use with Linux.  Leaving it at the default
+will result in hundreds of thousands of head load/unload cycles in a very
+short period of time.  The drive mechanism is only rated for 300,000 to 1,000,000
+cycles, so leaving it at the default could result in premature failure,
+not to mention the performance impact of the drive often having to wake-up
+before doing routine I/O.
+.IP
+WD supply a WDIDLE3.EXE DOS utility for tweaking this setting,
+and you should use that program instead of hdparm
+if at all possible.  The reverse-engineered implementation in hdparm
+is not as complete as the original official program, even though it does
+seem to work on at a least a few drives.  A full power cycle is required
+for any change in setting to take effect, regardless of which program is
+used to tweak things.
+.IP
+A setting of 30 seconds is recommended for Linux use.
+Permitted values are from 8 to 12 seconds, and from 30 to 300 seconds
+in 30-second increments.
+Specify a value of zero (0) to disable the WD idle3 timer completely
+(NOT RECOMMENDED!).
 .TP
 .I -k
 Get/set the "keep_settings_over_reset" flag for the drive.

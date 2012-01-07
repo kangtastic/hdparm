@@ -95,6 +95,8 @@ static inline int needs_lba48 (__u8 ata_op, __u64 lba, unsigned int nsect)
 			return 1;
 		case ATA_OP_SECURITY_ERASE_PREPARE:
 		case ATA_OP_SECURITY_ERASE_UNIT:
+		case ATA_OP_VENDOR_SPECIFIC_0x80:
+		case ATA_OP_SMART:
 			return 0;
 	}
 	if (lba >= lba28_limit)

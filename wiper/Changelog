@@ -1,3 +1,5 @@
+wiper.sh-3.4
+	- updated to allow all SCSI_DISK_MAJOR numbers, not just "8"
 wiper.sh-3.3
 	- remove need for external "rdev" utility, to keep Suse/Redhat/Fedora users happy
 
