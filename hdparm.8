@@ -1,4 +1,4 @@
-.TH HDPARM 8 "January 2012" "Version 9.38"
+.TH HDPARM 8 "January 2012" "Version 9.39"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -541,6 +541,17 @@ For SATA disks, this is the Native Command Queuing (NCQ) queue depth.
 .TP
 .I -r
 Get/set read-only flag for the device.  When set, Linux disallows write operations on the device.
+.TP
+.I -R
+Get/set Write-Read-Verify feature, if the drive supports it.
+Usage:
+.B -R0
+(disable) or
+.B -R1
+(enable).  This feature is intended to have the drive firmware automatically
+read-back any data that is written by software, to verify that the data was
+successfully written.  This is generally overkill, and can slow down disk
+writes by as much as a factor of two (or more).
 .TP
 .I --read-sector
 Reads from the specified sector number, and dumps the contents in hex to standard output.

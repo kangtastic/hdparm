@@ -1,5 +1,5 @@
 /* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark Lord (C) 1994-2008 -- freely distributable */
+/*          - by Mark Lord (C) 1994-2012 -- freely distributable */
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
@@ -35,7 +35,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.38"
+#define VERSION "v9.39"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -101,6 +101,7 @@ static int do_fwdownload = 0, xfer_mode = 0;
 static int	set_busstate = 0, get_busstate = 0, busstate = 0;
 static int	set_reread_partn = 0, get_reread_partn;
 static int	set_acoustic = 0, get_acoustic = 0, acoustic = 0;
+static int write_read_verify = 0, get_write_read_verify = 0, set_write_read_verify = 0;
 
 static int   make_bad_sector = 0, make_bad_sector_flagged;
 static __u64 make_bad_sector_addr = ~0ULL;
@@ -1451,7 +1452,7 @@ static void usage_help (int clue, int rc)
 	" -q   Change next setting quietly\n"
 	" -Q   Get/set DMA queue_depth (if supported)\n"
 	" -r   Get/set device readonly flag (DANGEROUS to set)\n"
-	" -R   Obsolete\n"
+	" -R   Get/set device write-read-verify flag\n"
 	" -s   Set power-up in standby flag (0/1) (DANGEROUS)\n"
 	" -S   Set standby (spindown) timeout\n"
 	" -t   Perform device read timings\n"
@@ -1807,6 +1808,19 @@ void process_dev (char *devname)
 		if (do_drive_cmd(fd, args, 0)) {
 			err = errno;
 			perror(" HDIO_DRIVE_CMD:ACOUSTIC failed");
+		}
+	}
+	if (set_write_read_verify) {
+		__u8 args[4];
+		if (get_write_read_verify)
+			printf(" setting write-read-verify to %d\n", write_read_verify);
+		args[0] = ATA_OP_SETFEATURES;
+		args[1] = write_read_verify;
+		args[2] = write_read_verify ? 0x0b : 0x8b;
+		args[3] = 0;
+		if (do_drive_cmd(fd, args, 0)) {
+			err = errno;
+			perror(" HDIO_DRIVE_CMD:WRV failed");
 		}
 	}
 	if (set_wcache) {
@@ -2229,6 +2243,16 @@ void process_dev (char *devname)
 				printf(" acoustic      = %2u (128=quiet ... 254=fast)\n", id[94] & 0xff);
 			else
 				printf(" acoustic      = not supported\n");
+		}
+	}
+	if (get_write_read_verify) {
+		get_identify_data(fd);
+		if (id) {
+				int supported = id[119] & 0x2;
+				if (supported)
+					printf(" write-read-verify = %2u\n", id[120] & 0x2);
+				else
+					printf(" write-read-verify = not supported\n");
 		}
 	}
 	if (get_busstate) {
@@ -2760,6 +2784,7 @@ int main (int _argc, char **_argv)
 				case     SET_PARM('s',"powerup-in-standby",powerup_in_standby,0,1);
 				case     SET_PARM('S',"standby-interval",standby,0,255);
 				case GET_SET_PARM('r',"read-only",readonly,0,1);
+				case GET_SET_PARM('R',"write-read-verify",write_read_verify,0,3);
 				case      DO_FLAG('t',do_timings);
 				case      DO_FLAG('T',do_ctimings);
 				case GET_SET_PARM('u',"unmask-irq",unmask,0,1);

@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	9.38
-Entered-date:	2012-01-07
+Version:	9.39
+Entered-date:	2012-02-02
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.38 Added -R, courtesy of Gordan Bobic
 		v9.38 Added -J, fixed erase timeouts, updated wiper.sh
 		v9.37 Enable --fibmap to work on RAID1; other tweaks
 		v9.36 manpage updates, wiper.sh version 3.1
@@ -112,7 +113,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		131K hdparm-9.38.tar.gz
+		127K hdparm-9.39.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux
 Copying-policy:	BSD License

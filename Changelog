@@ -1,4 +1,7 @@
-9.37+
+hdparm-9.39
+	- added -R flag to control Read-Write-Verify feature, courtesy of Gordan Bobic
+	- nuked leftover sgio.c.orig file
+hdparm-9.38
 	- updated wiper.sh to allow all SCSI_DISK major numbers
 	- updated handing for very long SECURITY-ERASE times
 	- added -J flag for wdidle3 set/get
