@@ -514,8 +514,8 @@ static const char *feat_sct_str[16] = {
 	"SCT Data Tables (AC5)",			/* word 206 bit  5 */
 	"SCT Features Control (AC4)",			/* word 206 bit  4 */
 	"SCT Error Recovery Control (AC3)",		/* word 206 bit  3 */
-	"SCT LBA Segment Access (AC2)",			/* word 206 bit  2 */
-	"SCT Long Sector Access (AC1)",			/* word 206 bit  1 */
+	"SCT Write Same (AC2)",				/* word 206 bit  2 */
+	"SCT Read/Write Long (AC1), obsolete",		/* word 206 bit  1: obsolete per T13/e08153r1 */
 	"SMART Command Transport (SCT) feature set"	/* word 206 bit  0 */
 };
 

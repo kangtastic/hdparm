@@ -1,5 +1,7 @@
-/* hdparm.c - Command line interface to get/set hard disk parameters */
-/*          - by Mark Lord (C) 1994-2012 -- freely distributable */
+/*
+ * hdparm.c - Command line interface to get/set hard disk parameters.
+ *          - by Mark Lord (C) 1994-2012 -- freely distributable.
+ */
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
@@ -35,7 +37,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.39"
+#define VERSION "v9.41"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -719,7 +721,7 @@ static unsigned int get_erase_timeout_secs (int fd, int enhanced)
 				if (timeout < estimate)
 					timeout = estimate;
 			} else {
-				timeout = (timeout * 2) + 5;  /* Add on a 5min margin */
+				timeout = (timeout * 2) + 30;  /* Add on a 30min margin */
 			}
 		}
 	}

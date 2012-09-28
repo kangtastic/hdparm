@@ -1,3 +1,9 @@
+hdparm-9.41
+	- proper SCT identify info courtesy of Leonid Evdokimov <leon@darkk.net.ru>
+	- updated raid1ext4trim.sh-1.5 script
+hdparm-9.40
+	- avoid HDIO_GETGEO_BIG when possible (doesn't exist in linux-2.6.xx and beyond)
+	- pad secure erase timeouts by 30minutes rather than 5minutes.
 hdparm-9.39
 	- added -R flag to control Read-Write-Verify feature, courtesy of Gordan Bobic
 	- nuked leftover sgio.c.orig file

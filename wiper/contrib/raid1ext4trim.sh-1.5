@@ -4,9 +4,9 @@
 #
 # By Chris Caputo.  Adapted from wiper.sh (ver 2.6) by Mark Lord.
 
-VERSION=1.4
+VERSION=1.5
 
-# Copyright (C) 2010 Chris Caputo.  All rights reserved.
+# Copyright (C) 2010-2012 Chris Caputo.  All rights reserved.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License Version 2,
@@ -51,9 +51,9 @@ while [ $argc -gt 0 ]; do
 		commit=yes
 	elif [ "$1" = "--verbose" ]; then
 		verbose=$((verbose + 1))
-	elif [[ "$1" =~ --reserve=[[:digit:]] ]]; then
+	elif [[ "$1" =~ --reserve= ]]; then
 		reservemegs=${1##--reserve=}
-	elif [[ "$1" =~ --max-ranges=[[:digit:]] ]]; then
+	elif [[ "$1" =~ --max-ranges= ]]; then
 		max_ranges=${1##--max-ranges=}
 	elif [ "$1" = "" ]; then
 		usage_error
@@ -78,10 +78,10 @@ done
 
 isdigit ()    # Tests whether *entire string* is numerical.
 {             # In other words, tests for integer variable.
-	[ $# -eq 1 ] || return -1
+	[ $# -eq 1 ] || return 1
 
 	case $1 in
-		*[!0-9]*|"") return -1;;
+		*[!0-9]*|"") return 1;;
 		*) return 0;;
 	esac
 }
