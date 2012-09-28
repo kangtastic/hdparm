@@ -1,3 +1,5 @@
+wiper.sh-3.5
+	- don't skip Group 0 on ext* filesystems
 wiper.sh-3.4
 	- updated to allow all SCSI_DISK_MAJOR numbers, not just "8"
 wiper.sh-3.3

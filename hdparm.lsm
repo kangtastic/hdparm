@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	9.41
+Version:	9.42
 Entered-date:	2012-09-28
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.42 lots of fixes from the sourceforge queue
 		v9.41 updated SCT identification, other small fixes.
 		v9.40 internal release
 		v9.39 Added -R, courtesy of Gordan Bobic
@@ -115,7 +116,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		127K hdparm-9.41.tar.gz
+		127K hdparm-9.42.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux
 Copying-policy:	BSD License

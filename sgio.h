@@ -115,7 +115,8 @@ enum {
 	TASKFILE_DPHASE_PIO_OUT	= 4,	/* ide: TASKFILE_OUT */
 };
 
-struct reg_flags {
+union reg_flags {
+	unsigned all				:16;
 	union {
 		unsigned lob_all		: 8;
 		struct {
@@ -142,7 +143,7 @@ struct reg_flags {
 			unsigned command	: 1;
 		} hob;
 	};
-};
+} __attribute__((packed));
 
 struct taskfile_regs {
 	__u8	data;
@@ -158,8 +159,8 @@ struct taskfile_regs {
 struct hdio_taskfile {
 	struct taskfile_regs	lob;
 	struct taskfile_regs	hob;
-	struct reg_flags	oflags;
-	struct reg_flags	iflags;
+	union reg_flags		oflags;
+	union reg_flags		iflags;
 	int			dphase;
 	int			cmd_req;     /* IDE command_type */
 	unsigned long		obytes;

@@ -222,7 +222,7 @@ int do_filemap (const char *file_name)
 	int fd, err;
 	struct stat st;
 	__u64 start_lba = 0;
-	unsigned int sectors_per_block;
+	unsigned int sectors_per_block, blksize;
 
 	if ((fd = open(file_name, O_RDONLY)) == -1) {
 		err = errno;
@@ -253,11 +253,15 @@ int do_filemap (const char *file_name)
 		close(fd);
 		return EIO;
 	}
-
-	sectors_per_block = st.st_blksize / sector_bytes;
-	printf("\n%s:\n filesystem blocksize %lu, begins at LBA %llu;"
+	if((err=ioctl(fd,FIGETBSZ,&blksize))){
+		fprintf(stderr, "Unable to determine block size, aborting.\n");
+		close(fd);
+		return err;
+	};
+	sectors_per_block = blksize / sector_bytes;
+	printf("\n%s:\n filesystem blocksize %u, begins at LBA %llu;"
 	       " assuming %u byte sectors.\n",
-	       file_name, (unsigned long)st.st_blksize, start_lba, sector_bytes);
+	       file_name, blksize, start_lba, sector_bytes);
 	printf("%12s %10s %10s %10s\n", "byte_offset", "begin_LBA", "end_LBA", "sectors");
 
 	if (st.st_size == 0) {

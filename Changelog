@@ -1,3 +1,12 @@
+hdparm-9.42
+	- fix ordering of -S -y flags
+	- spelling, typo, and formatting fixes for manpage and others
+	- set block-count to 1 for Security commands sent via SAT (sgio)
+	- use FIGETBSZ to determine filesystem block size for fibmap -- needed for FAT
+	- fix master password revcode handling
+	- try and fix reg_flags (again!) for old IDE taskfile ioctls
+	- fixed '&&' bug in dco_identify code
+	- force sector dumps (read-sector, identify, ..) to use le16 output format
 hdparm-9.41
 	- proper SCT identify info courtesy of Leonid Evdokimov <leon@darkk.net.ru>
 	- updated raid1ext4trim.sh-1.5 script

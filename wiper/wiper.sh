@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord <mlord@pobox.com>
 
-VERSION=3.4 
+VERSION=3.5 
 
 # Copyright (C) 2009-2010 Mark Lord.  All rights reserved.
 #
@@ -251,6 +251,11 @@ function get_fsmode(){  ## from fsdir
 ## and "/dev/root" is not usually a real device.  We leave it like that for now,
 ## because that's the pattern such systems also use in /proc/mounts.
 ## Later, at time of use, we'll try harder to find the real rootdev.
+##
+## FIXME: apparently this doesn't work on SuSE Linux, though.
+## So for there, we'll likely need to read /etc/mtab,
+## or be a lot more clever and get it somehow from statfs or something.
+## FIXME: or use target from /dev/root symlink for Gentoo as well.
 ##
 function match_rootdev() {
 	rdev=""
@@ -793,7 +798,7 @@ GAWKPROG='
 		blksects = $NF / 512
 		next
 	}
-	/^Group [1-9][0-9]*:/ {	## Second stage output from dumpe2fs:
+	/^Group [0-9][0-9]*:/ {	## Second stage output from dumpe2fs:
 		in_groups = 1
 		next
 	}

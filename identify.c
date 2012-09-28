@@ -1473,7 +1473,7 @@ void dco_identify_print (__u16 *dco)
 	}
 	putchar('\n');
 
-	if (dco[8] && 0x1f) {
+	if (dco[8] & 0x1f) {
 		printf("\tSATA command/feature sets:\n\t\t");
 		if (dco[0] < 2)
 			printf(" (?):");
