@@ -1,3 +1,5 @@
+hdparm-9.43
+	- rearrange flag execution so that the idle/standby/sleep "now" flags are executed last.
 hdparm-9.42
 	- fix ordering of -S -y flags
 	- spelling, typo, and formatting fixes for manpage and others

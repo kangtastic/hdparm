@@ -38,7 +38,7 @@ static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
 
-#define VERSION "v9.42"
+#define VERSION "v9.43"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -1867,40 +1867,6 @@ void process_dev (char *devname)
 			perror(" HDIO_DRIVE_CMD(setidle) failed");
 		}
 	}
-	if (set_standbynow) {
-		__u8 args1[4] = {ATA_OP_STANDBYNOW1,0,0,0};
-		__u8 args2[4] = {ATA_OP_STANDBYNOW2,0,0,0};
-		if (get_standbynow)
-			printf(" issuing standby command\n");
-		if (do_drive_cmd(fd, args1, 0) && do_drive_cmd(fd, args2, 0)) {
-			err = errno;
-			perror(" HDIO_DRIVE_CMD(standby) failed");
-		}
-	}
-	if (set_idleimmediate) {
-		__u8 args[4] = {ATA_OP_IDLEIMMEDIATE,0,0,0};
-		if (get_idleimmediate)
-			printf(" issuing idle_immediate command\n");
-		if (do_drive_cmd(fd, args, 0)) {
-			err = errno;
-			perror(" HDIO_DRIVE_CMD(idle_immediate) failed");
-		}
-	}
-	if (set_idleunload) {
-		if (get_idleunload)
-			printf(" issuing idle_immediate_unload command\n");
-		err = do_idleunload(fd, devname);
-	}
-	if (set_sleepnow) {
-		__u8 args1[4] = {ATA_OP_SLEEPNOW1,0,0,0};
-		__u8 args2[4] = {ATA_OP_SLEEPNOW2,0,0,0};
-		if (get_sleepnow)
-			printf(" issuing sleep command\n");
-		if (do_drive_cmd(fd, args1, 0) && do_drive_cmd(fd, args2, 0)) {
-			err = errno;
-			perror(" HDIO_DRIVE_CMD(sleep) failed");
-		}
-	}
 	if (set_security) {
 		do_set_security(fd);
 	}
@@ -2322,6 +2288,40 @@ void process_dev (char *devname)
 		if (ioctl(fd, BLKRRPART, NULL)) {
 			err = errno;
 			perror(" BLKRRPART failed");
+		}
+	}
+	if (set_idleimmediate) {
+		__u8 args[4] = {ATA_OP_IDLEIMMEDIATE,0,0,0};
+		if (get_idleimmediate)
+			printf(" issuing idle_immediate command\n");
+		if (do_drive_cmd(fd, args, 0)) {
+			err = errno;
+			perror(" HDIO_DRIVE_CMD(idle_immediate) failed");
+		}
+	}
+	if (set_standbynow) {
+		__u8 args1[4] = {ATA_OP_STANDBYNOW1,0,0,0};
+		__u8 args2[4] = {ATA_OP_STANDBYNOW2,0,0,0};
+		if (get_standbynow)
+			printf(" issuing standby command\n");
+		if (do_drive_cmd(fd, args1, 0) && do_drive_cmd(fd, args2, 0)) {
+			err = errno;
+			perror(" HDIO_DRIVE_CMD(standby) failed");
+		}
+	}
+	if (set_idleunload) {
+		if (get_idleunload)
+			printf(" issuing idle_immediate_unload command\n");
+		err = do_idleunload(fd, devname);
+	}
+	if (set_sleepnow) {
+		__u8 args1[4] = {ATA_OP_SLEEPNOW1,0,0,0};
+		__u8 args2[4] = {ATA_OP_SLEEPNOW2,0,0,0};
+		if (get_sleepnow)
+			printf(" issuing sleep command\n");
+		if (do_drive_cmd(fd, args1, 0) && do_drive_cmd(fd, args2, 0)) {
+			err = errno;
+			perror(" HDIO_DRIVE_CMD(sleep) failed");
 		}
 	}
 	if (set_doreset) {
