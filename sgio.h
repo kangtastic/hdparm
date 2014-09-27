@@ -117,6 +117,7 @@ enum {
 
 union reg_flags {
 	unsigned all				:16;
+	struct {
 	union {
 		unsigned lob_all		: 8;
 		struct {
@@ -143,6 +144,7 @@ union reg_flags {
 			unsigned command	: 1;
 		} hob;
 	};
+	} bits;
 } __attribute__((packed));
 
 struct taskfile_regs {

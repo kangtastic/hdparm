@@ -20,7 +20,7 @@ int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *st
 int get_dev_t_geometry (dev_t dev, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *start_lba, __u64 *nsectors);
 int do_filemap(const char *file_name);
 int do_fallocate_syscall (const char *name, __u64 bytecount);
-int fwdownload(int fd, __u16 *id, const char *fwpath, int xfer_mode);
+int fwdownload (int fd, __u16 *id, const char *fwpath, int xfer_mode);
 void dco_identify_print (__u16 *dco);
 int set_dvdspeed(int fd, int speed);
 int fd_is_raid (int fd);

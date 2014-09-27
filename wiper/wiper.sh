@@ -2,7 +2,7 @@
 #
 # SATA SSD free-space TRIM utility, by Mark Lord <mlord@pobox.com>
 
-VERSION=3.5 
+VERSION=3.6 
 
 # Copyright (C) 2009-2010 Mark Lord.  All rights reserved.
 #
@@ -681,7 +681,7 @@ if [ "$method" = "online" ]; then
 			exit 1
 		fi
 	fi
-	echo -n "Creating temporary file (${tmpsize} KB).. "
+	echo -n "Allocating temporary file (${tmpsize} KB).. "
 	if ! $HDPARM --fallocate "${tmpsize}" $tmpfile ; then
 		echo "$target: this kernel may not support 'fallocate' on a $fstype filesystem, aborting." >&2
 		exit 1

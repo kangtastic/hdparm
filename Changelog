@@ -1,3 +1,10 @@
+hdparm-9.44:
+	- changed reg_flags struct to more closely match kernel definition (Lucas Magasweran).
+	- added fwdownload mode "E" support (Rusty Carruth).
+	- fix timeouts for security-erase (again!)
+	- change display of security "supported" to handle ambiguous reporting from drives
+	- don't rely upon C-library for byte-swapping
+	- added --dco-setmax support, courtesy of Geoff Papilion.
 hdparm-9.43
 	- rearrange flag execution so that the idle/standby/sleep "now" flags are executed last.
 hdparm-9.42

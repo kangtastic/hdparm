@@ -1307,7 +1307,7 @@ void identify (__u16 *id_supplied)
 		printf("\t\tRemovable Media Status Notification feature set supported\n");
 
 	/* security */
-	if((eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
+	if((val[CMDS_SUPP_2] & 2) && (eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
 	{
 		printf("Security: \n");
 		if(val[PSWD_CODE] && (val[PSWD_CODE] != 0xffff))
@@ -1315,7 +1315,7 @@ void identify (__u16 *id_supplied)
 		jj = val[SECU_STATUS];
 		if(jj) {
 			for (ii = 0; ii < NUM_SECU_STR; ii++) {
-				if(!(jj & 0x0001)) printf("\tnot\t");
+				if(!(jj & 0x0001)) printf("%s", ii ? "\tnot\t" : "\t(?)\t");
 				else		   printf("\t\t");
 				printf("%s\n",secu_str[ii]);
 				jj >>=1;
