@@ -197,7 +197,8 @@ int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects,
 		 * On all (32 and 64 bit) systems, the cyls value is bit-limited.
 		 * So try and correct it using other info we have at hand.
 		 */
-		if (nsectors && cyls && heads && sects) {
+		if (nsectors && cyls && heads && sects
+		 && *nsectors && *cyls && *heads && *sects) {
 			__u64 hs  = (*heads) * (*sects);
 			__u64 cyl = (*cyls);
 			__u64 chs = cyl * hs;

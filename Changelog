@@ -1,3 +1,7 @@
+hdparm-9.45:
+	- fixed blocksize handling in fibmap code to use result from FIGETBSZ in more places (Anton Altaparmakov).
+	- fixed divide by zero exception in geom.c
+	- tidying up formatting in sgio.c
 hdparm-9.44:
 	- changed reg_flags struct to more closely match kernel definition (Lucas Magasweran).
 	- added fwdownload mode "E" support (Rusty Carruth).
