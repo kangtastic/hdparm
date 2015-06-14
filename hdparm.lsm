@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	9.45
-Entered-date:	2014-09-27
+Version:	9.46
+Entered-date:	2015-06-14
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.46 added "hex:xxxxxxxx" format for binary security passwords; misc small fixes
 		v9.45 fixed fibmap block size; other minor stuff.
 		v9.44 better sgio compatibility with kernel; fwdownload mode "E"; longer erase timeout; etc.
 		v9.43 rearrange flag execution so that the idle/standby/sleep "now" flags are executed last.
@@ -119,7 +120,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		129K hdparm-9.45.tar.gz
+		129K hdparm-9.46.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux
 Copying-policy:	BSD License

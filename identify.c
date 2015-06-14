@@ -907,7 +907,7 @@ void identify (__u16 *id_supplied)
 				if(like_std < 3) {
 					nn = (__u32)val[CAPACITY_LSB] << 16 | val[CAPACITY_MSB];
 					/* check Endian of capacity bytes */
-					if(abs(mm - bb) > abs(nn - bb))
+					if(llabs((long long)(mm - bb)) > llabs((long long)(nn - bb)))
 						mm = nn;
 				}
 				printf("\tCHS current addressable sectors:%11u\n",mm);

@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <dirent.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <linux/types.h>
 

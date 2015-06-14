@@ -2,6 +2,8 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2012 -- freely distributable.
  */
+#define HDPARM_VERSION "v9.46"
+
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
 #include <unistd.h>
@@ -37,8 +39,6 @@ static char  *argp;
 static int    num_flags_processed = 0;
 
 extern const char *minor_str[];
-
-#define VERSION "v9.45"
 
 #ifndef O_DIRECT
 #define O_DIRECT	040000	/* direct disk access, not easily obtained from headers */
@@ -229,7 +229,7 @@ static int read_big_block (int fd, char *buf)
 		} else {
 			fputs ("read() hit EOF - device too small\n", stderr);
 		}
-		return 1;
+		return EIO;
 	}
 	/* access all sectors of buf to ensure the read fully completed */
 	for (i = 0; i < TIMING_BUF_BYTES; i += 512)
@@ -378,7 +378,7 @@ static int time_device (int fd)
 	getitimer(ITIMER_REAL, &e1);
 	do {
 		++iterations;
-		if (read_big_block (fd, buf))
+		if ((err = read_big_block(fd, buf)))
 			goto quit;
 		getitimer(ITIMER_REAL, &e2);
 		elapsed = (e1.it_value.tv_sec - e2.it_value.tv_sec)
@@ -1518,7 +1518,7 @@ static void usage_help (int clue, int rc)
 {
 	FILE *desc = rc ? stderr : stdout;
 
-	fprintf(desc,"\n%s - get/set hard disk parameters - version " VERSION ", by Mark Lord.\n\n", progname);
+	fprintf(desc,"\n%s - get/set hard disk parameters - version " HDPARM_VERSION ", by Mark Lord.\n\n", progname);
 	if (0) if (rc) fprintf(desc, "clue=%d\n", clue);
 	fprintf(desc,"Usage:  %s  [options] [device ...]\n\n", progname);
 	fprintf(desc,"Options:\n"
@@ -2546,24 +2546,45 @@ numeric_parm (char c, const char *name, int *val, int *setparm, int *getparm, in
 static void get_security_password (int handle_NULL)
 {
 	unsigned int maxlen = sizeof(security_password) - 1;
+	unsigned int binary_passwd = 0;
 
-	if (argc < 2) {
-		fprintf(stderr, "missing PASSWD\n");
-		exit(EINVAL);
-	}
 	argp = *argv++, --argc;
-	if (!argp) {
+	if (!argp || argc < 1) {
 		fprintf(stderr, "missing PASSWD\n");
-		exit(EINVAL);
-	}
-	if (strlen(argp) > maxlen) {
-		fprintf(stderr, "PASSWD too long (must be %d chars max)\n", maxlen);
 		exit(EINVAL);
 	}
 	memset(security_password, 0, maxlen + 1);
-	if (!handle_NULL || strcmp(argp, "NULL"))
+	if (0 == strncmp(argp, "hex:", 4)) {
+		argp += 4;
+		if (strlen(argp) != (maxlen * 2)) {
+			fprintf(stderr, "invalid PASSWD length (hex string must be exactly %d chars)\n", maxlen*2);
+			exit(EINVAL);
+		}
+		char *cur = security_password;
+		while (*argp) {
+			int d[2];
+			d[0] = fromhex(*argp++);
+			d[1] = fromhex(*argp++);
+			*(cur++) = d[0] << 4 | d[1];
+		}
+		binary_passwd = 1;
+	} else if (strlen(argp) > maxlen) {
+		fprintf(stderr, "PASSWD too long (must be %d chars max)\n", maxlen);
+		exit(EINVAL);
+	} else if (!handle_NULL || strcmp(argp, "NULL")) {
 		strcpy(security_password, argp);
-	printf("security_password=\"%s\"\n", security_password);
+	}
+	printf("security_password:");
+	if (!binary_passwd) {
+		printf(" \"%s\"\n", security_password);
+	} else {
+		unsigned int i;
+		for (i = 0; i < maxlen; ++i) {
+			unsigned char c = security_password[i];
+			printf(" %02x", c);
+		}
+		putchar('\n');
+	}
 	while (*argp)
 		++argp;
 }
@@ -2926,7 +2947,7 @@ int main (int _argc, char **_argv)
 				case      DO_FLAG('T',do_ctimings);
 				case GET_SET_PARM('u',"unmask-irq",unmask,0,1);
 				case      DO_FLAG('v',do_defaults);
-				case              'V': fprintf(stdout, "%s %s\n", progname, VERSION); exit(0);
+				case              'V': fprintf(stdout, "%s %s\n", progname, HDPARM_VERSION); exit(0);
 				case     SET_FLAG('w',doreset);
 				case GET_SET_PARM('W',"write-cache",wcache,0,1);
 				case     SET_FLAG('y',standbynow);

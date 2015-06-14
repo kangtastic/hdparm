@@ -1,3 +1,8 @@
+hdparm-9.46:
+	- fix compilation with "musl libc".
+	- added "hex:aabbcc.." for binary security passwords.
+	- return EIO when read_big_block() fails
+	- use llabs() rather than abs() in identify.c
 hdparm-9.45:
 	- fixed blocksize handling in fibmap code to use result from FIGETBSZ in more places (Anton Altaparmakov).
 	- fixed divide by zero exception in geom.c
