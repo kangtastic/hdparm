@@ -1,3 +1,6 @@
+hdparm-9.47:
+	- added devslp patch (IDENTIFY word 76) from David Woodhouse.
+	- help and manpage fixes from Michal Minar.
 hdparm-9.46:
 	- fix compilation with "musl libc".
 	- added "hex:aabbcc.." for binary security passwords.

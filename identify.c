@@ -421,9 +421,9 @@ static const char *feat_3_str[16] = {
 	"Disable Data Transfer After Error Detection"	/* word 119 bit  0 (ref: 2014DT)*/
 };
 static const char *cap_sata0_str[16] = { 
-	"unknown 76[15]",				/* word 76 bit 15 */
-	"unknown 76[14]",				/* word 76 bit 14 */
-	"unknown 76[13]",				/* word 76 bit 13 */
+	"READ_LOG_DMA_EXT equivalent to READ_LOG_EXT",	/* word 76 bit 15 */
+	"Device automatic Partial to Slumber transitions",/* word 76 bit 14 */
+	"Host automatic Partial to Slumber transitions",/* word 76 bit 13 */
 	"NCQ priority information",			/* word 76 bit 12 */
 	"Idle-Unload when NCQ is active",		/* word 76 bit 11 */
 	"Phy event counters",				/* word 76 bit 10 */
@@ -446,7 +446,7 @@ static const char *feat_sata0_str[16] = {
 	"unknown 78[11]",				/* word 78 bit 11 */
 	"unknown 78[10]",				/* word 78 bit 10 */
 	"unknown 78[9]",				/* word 78 bit  9 */
-	"unknown 78[8]",				/* word 78 bit  8 */
+	"Device Sleep (DEVSLP)",			/* word 78 bit  8 */
 	"unknown 78[7]",				/* word 78 bit  7 */
 	"Software settings preservation",		/* word 78 bit  6 */
 	"Asynchronous notification (eg. media change)",	/* word 78 bit  5 */

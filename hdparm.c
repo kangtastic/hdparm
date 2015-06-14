@@ -2,7 +2,7 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2012 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.46"
+#define HDPARM_VERSION "v9.47"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -911,6 +911,28 @@ static void get_identify_data (int fd)
 	}
 }
 
+static int get_id_log_page_data (int fd, __u8 pagenr, __u8 *buf)
+{
+	struct hdio_taskfile *r;
+	int err = 0;
+
+	r = malloc(sizeof(struct hdio_taskfile) + 512);
+	if (!r) {
+		err = errno;
+		perror("malloc()");
+		return err;
+	}
+
+	init_hdio_taskfile(r, ATA_OP_READ_LOG_EXT, RW_READ, LBA48_FORCE, 0x30 + (pagenr << 8), 1, 512);
+	if (do_taskfile_cmd(fd, r, timeout_15secs)) {
+		err = errno;
+	} else {
+		memcpy(buf, r->data, 512);
+	}
+	free(r);
+	return err;
+}
+
 static void confirm_i_know_what_i_am_doing (const char *opt, const char *explanation)
 {
 	if (!i_know_what_i_am_doing) {
@@ -1590,6 +1612,7 @@ static void usage_help (int clue, int rc)
 	" --offset          use with -t, to begin timings at given offset (in GiB) from start of drive\n"
 	" --prefer-ata12    Use 12-byte (instead of 16-byte) SAT commands when possible\n"
 	" --read-sector     Read and dump (in hex) a sector directly from the media\n"
+	" --repair-sector   Alias for the --write-sector option (VERY DANGEROUS)\n"
 	" --security-help   Display help for ATA security commands\n"
 	" --trim-sector-ranges        Tell SSD firmware to discard unneeded data sectors: lba:count ..\n"
 	" --trim-sector-ranges-stdin  Same as above, but reads lba:count pairs from stdin\n"
@@ -2281,6 +2304,26 @@ void process_dev (char *devname)
 				dump_sectors(id, 1);
 			else
 				identify((void *)id);
+
+			/* Print DEVSLP information */
+			if (id[78] & 0x0100) {
+				__u8 buf[512];
+				int deto = 0;
+				int mdat = 0;
+
+				memset(buf, 0, 512);
+				if (!get_id_log_page_data(fd, 8, buf) &&
+				    (buf[0x37] & 0x80)) {
+					mdat = buf[0x30] & 0x1f;
+					deto = buf[0x31];
+				}
+				printf("Device Sleep:\n");
+				printf("\tDEVSLP Exit Timeout (DETO): %d ms (%s)\n",
+				       deto?deto:20, deto?"drive":"default");
+
+				printf("\tMinimum DEVSLP Assertion Time (MDAT): %d ms (%s)\n",
+				       mdat?mdat:10, deto?"drive":"default");
+			}
 		}
 	}
 	if (get_lookahead) {
