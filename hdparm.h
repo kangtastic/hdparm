@@ -9,7 +9,7 @@
 
 #define lba28_limit ((__u64)(1<<28) - 1)
 
-void identify (__u16 *id_supplied);
+void identify (int fd, __u16 *id_supplied);
 void usage_error(int out) __attribute__((noreturn));
 void no_scsi (void);
 void no_xt (void);
@@ -29,6 +29,8 @@ int  wdidle3_set_timeout (int fd, unsigned char timeout);
 int  wdidle3_get_timeout (int fd, unsigned char *timeout);
 void wdidle3_print_timeout (unsigned char timeout);
 unsigned char wdidle3_msecs_to_timeout (unsigned int msecs);
+
+int get_id_log_page_data (int fd, __u8 pagenr, __u8 *buf);
 
 extern const char *BuffType[4];
 

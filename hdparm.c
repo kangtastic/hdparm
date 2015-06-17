@@ -2,7 +2,7 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2012 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.47"
+#define HDPARM_VERSION "v9.48"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -911,7 +911,7 @@ static void get_identify_data (int fd)
 	}
 }
 
-static int get_id_log_page_data (int fd, __u8 pagenr, __u8 *buf)
+int get_id_log_page_data (int fd, __u8 pagenr, __u8 *buf)
 {
 	struct hdio_taskfile *r;
 	int err = 0;
@@ -2303,27 +2303,7 @@ void process_dev (char *devname)
 			if (do_IDentity == 2)
 				dump_sectors(id, 1);
 			else
-				identify((void *)id);
-
-			/* Print DEVSLP information */
-			if (id[78] & 0x0100) {
-				__u8 buf[512];
-				int deto = 0;
-				int mdat = 0;
-
-				memset(buf, 0, 512);
-				if (!get_id_log_page_data(fd, 8, buf) &&
-				    (buf[0x37] & 0x80)) {
-					mdat = buf[0x30] & 0x1f;
-					deto = buf[0x31];
-				}
-				printf("Device Sleep:\n");
-				printf("\tDEVSLP Exit Timeout (DETO): %d ms (%s)\n",
-				       deto?deto:20, deto?"drive":"default");
-
-				printf("\tMinimum DEVSLP Assertion Time (MDAT): %d ms (%s)\n",
-				       mdat?mdat:10, deto?"drive":"default");
-			}
+				identify(fd, (void *)id);
 		}
 	}
 	if (get_lookahead) {
@@ -2549,7 +2529,7 @@ identify_from_stdin (void)
 		}
 	} while (wc < 256);
 	putchar('\n');
-	identify(sbuf);
+	identify(-1, sbuf);
 	return;
 eof:
 	err = errno;

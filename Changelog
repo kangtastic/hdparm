@@ -1,3 +1,5 @@
+hdparm-9.48:
+	- fix bugs from devslp patch.
 hdparm-9.47:
 	- added devslp patch (IDENTIFY word 76) from David Woodhouse.
 	- help and manpage fixes from Michal Minar.

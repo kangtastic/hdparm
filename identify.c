@@ -648,8 +648,27 @@ static int is_cfa_dev (__u16 *id)
 	return id[0] == 0x848a || id[0] == 0x844a || (id[83] & 0xc004) == 0x4004;
 }
 
+static void print_devslp_info (int fd, __u16 *id)
+{
+	/* Print DEVSLP information */
+	if (id[78] & 0x0100) {
+		__u8 buf[512];
+		int deto = 0;
+		int mdat = 0;
+
+		memset(buf, 0, 512);
+		if (fd != -1 && !get_id_log_page_data(fd, 8, buf) && (buf[0x37] & 0x80)) {
+			mdat = buf[0x30] & 0x1f;
+			deto = buf[0x31];
+			printf("Device Sleep:\n");
+			printf("\tDEVSLP Exit Timeout (DETO): %d ms (%s)\n", deto?deto:20, deto?"drive":"default");
+			printf("\tMinimum DEVSLP Assertion Time (MDAT): %d ms (%s)\n", mdat?mdat:10, deto?"drive":"default");
+		}
+	}
+}
+
 /* our main() routine: */
-void identify (__u16 *id_supplied)
+void identify (int fd, __u16 *id_supplied)
 {
 	unsigned int sector_bytes = 512;
 	__u16 val[256], ii, jj, kk;
@@ -1373,6 +1392,7 @@ void identify (__u16 *id_supplied)
 			printf(" determined by CSEL");
 		printf("\n");
 	}
+	print_devslp_info(fd, val);
 
 	/* more stuff from std 5 */
 	if ((like_std > 4) && (eqpt != CDROM)) {
