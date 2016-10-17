@@ -199,6 +199,7 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 /* words 47 & 59: sector_xfer_max & sector_xfer_cur */
 #define SECTOR_XFER		0x00ff  /* sectors xfered on r/w multiple cmds*/
 #define MULTIPLE_SETTING_VALID  0x0100  /* 1=multiple sector setting is valid */
+#define SANITIZE_FEAT_SUP       0x1000 /* SANITIZE FETURES set is supported */
 
 /* word 49: capabilities 0 */
 #define STD_STBY  		0x2000  /* 1=standard values supported (ATA);
@@ -222,6 +223,26 @@ const char *ata1_cfg_str[] = {			/* word 0 in ATA-1 mode */
 #define OK_W88     		0x0004	/* the ultra_dma info is valid */
 #define OK_W64_70		0x0002  /* see above for word descriptions */
 #define OK_W54_58		0x0001  /* current cyl, head, sector, cap. info valid */
+
+/* word 59: sanitize feature set */
+static const char *feat_word59_str[16] = {
+	"BLOCK_ERASE_EXT command",						/* word 84 bit 15 */
+	"OVERWRITE_EXT command",						/* word 84 bit 14 */
+	"CRYPTO_SCRAMBLE_EXT command",					/* word 59 bit 13 */
+	"SANITIZE feature set",							/* word 59 bit 12 */
+	NULL, 											/* word 59 bit 11 */
+	"SANITIZE_ANTIFREEZE_LOCK_EXT command",			/* word 59 bit 10 */
+	NULL,				/* word 59 bit  9 */
+	NULL,				/* word 59 bit  8 */
+	NULL,				/* word 59 bit  7 */
+	NULL,				/* word 59 bit  6 */
+	NULL,				/* word 59 bit  5 */
+	NULL,				/* word 59 bit  4 */
+	NULL,				/* word 59 bit  3 */
+	NULL,				/* word 59 bit  2 */
+	NULL,				/* word 59 bit  1 */
+	NULL				/* word 59 bit  0 */
+};
 
 /*word 63,88: dma_mode, ultra_dma_mode*/
 #define MODE_MAX		7	/* bit definitions force udma <=7 (when
@@ -929,19 +950,19 @@ void identify (int fd, __u16 *id_supplied)
 					if(llabs((long long)(mm - bb)) > llabs((long long)(nn - bb)))
 						mm = nn;
 				}
-				printf("\tCHS current addressable sectors:%11u\n",mm);
+				printf("\tCHS current addressable sectors:%12u\n",mm);
 			} 
 		}
 		if (val[CAPAB_0] & LBA_SUP) {
 		/* LBA addressing */
-			printf("\tLBA    user addressable sectors:%11u\n",ll);
+			printf("\tLBA    user addressable sectors:%12u\n",ll);
 			if( ((val[CMDS_SUPP_1] & VALID) == VALID_VAL) &&
 			     (val[CMDS_SUPP_1] & SUPPORT_48_BIT) ) {
 				bbbig = (__u64)val[LBA_64_MSB] << 48 | 
 				        (__u64)val[LBA_48_MSB] << 32 |
 				        (__u64)val[LBA_MID] << 16 | 
 					val[LBA_LSB] ;
-				printf("\tLBA48  user addressable sectors:%11llu\n", (unsigned long long)bbbig);
+				printf("\tLBA48  user addressable sectors:%12llu\n", (unsigned long long)bbbig);
 			}
 		}
 		if((val[106] & 0xc000) != 0x4000) {
@@ -1223,6 +1244,8 @@ void identify (int fd, __u16 *id_supplied)
 			print_features(val[SATA_SUPP_0], val[SATA_EN_0], feat_sata0_str);
 		if (val[SCT_SUPP] & 0x1)
 			print_features(val[SCT_SUPP], val[SCT_SUPP] & 0x3f, feat_sct_str);
+		if (val[SECTOR_XFER_CUR] & SANITIZE_FEAT_SUP)
+			print_features(val[SECTOR_XFER_CUR], val[SECTOR_XFER_CUR], feat_word59_str);
 	}
 	if (like_std > 6) {
 		const __u16 trimd = 1<<14;	/* deterministic read data after TRIM */
@@ -1322,50 +1345,62 @@ void identify (int fd, __u16 *id_supplied)
 		}
 	}
 
-	if((val[RM_STAT] & RM_STAT_BITS) == RM_STAT_SUP) 
+	if((val[RM_STAT] & RM_STAT_BITS) == RM_STAT_SUP)
 		printf("\t\tRemovable Media Status Notification feature set supported\n");
 
+
 	/* security */
-	if((val[CMDS_SUPP_2] & 2) && (eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
+	if ((val[CMDS_SUPP_0] & (1 << 1)) && (eqpt != CDROM) && (like_std > 3) && (val[SECU_STATUS] || val[ERASE_TIME] || val[ENH_ERASE_TIME]))
 	{
 		printf("Security: \n");
-		if(val[PSWD_CODE] && (val[PSWD_CODE] != 0xffff))
-			printf("\tMaster password revision code = %u\n",val[PSWD_CODE]);
+		if (val[PSWD_CODE] && (val[PSWD_CODE] != 0xffff))
+			printf("\tMaster password revision code = %u\n", val[PSWD_CODE]);
 		jj = val[SECU_STATUS];
-		if(jj) {
+		if (jj) {
 			for (ii = 0; ii < NUM_SECU_STR; ii++) {
-				if(!(jj & 0x0001)) printf("%s", ii ? "\tnot\t" : "\t(?)\t");
-				else		   printf("\t\t");
-				printf("%s\n",secu_str[ii]);
-				jj >>=1;
+				if (!(jj & 0x0001)) printf("%s", ii ? "\tnot\t" : "\t(?)\t");
+				else                printf("\t\t");
+				printf("%s\n", secu_str[ii]);
+				jj >>= 1;
 			}
-			if(val[SECU_STATUS] & SECU_ENABLED) {
+			if (val[SECU_STATUS] & SECU_ENABLED) {
 				printf("\tSecurity level ");
-				if(val[SECU_STATUS] & SECU_LEVEL) printf("maximum\n");
-				else				  printf("high\n");
+				if (val[SECU_STATUS] & SECU_LEVEL) printf("maximum\n");
+				else                               printf("high\n");
 			}
 		}
-		jj =  val[ERASE_TIME];
-		kk =  val[ENH_ERASE_TIME];
-		if((jj && jj <= 0x00ff) || (kk && kk <= 0x00ff)) {
-			printf("\t");
-			if (jj) {
-				if (jj == 0xff)
-					printf("more than 508");
-				else
-					printf("%u", jj * 2);
-				printf("min for SECURITY ERASE UNIT. ");
+		jj = val[ERASE_TIME];                                 // Grab normal erase time
+		unsigned int const ext_time_n = (jj & (1 << 15)) != 0;// Check if erase time is extended format or not (ACS-3)
+		jj = ext_time_n ? jj & 0x7FFF: jj & 0x00FF;           // Mask off reserved bits accordingly
+		kk = val[ENH_ERASE_TIME];                             // Grab enhanced erase time
+		unsigned int const ext_time_e = (kk & (1 << 15)) != 0;// Check if erase time is extended format or not (ACS-3)
+		kk = ext_time_e ? kk & 0x7FFF: kk & 0x00FF;           // Mask off reserved bits accordingly
+		if ((jj != 0) || (kk != 0)) printf("\t");
+		if (jj != 0) {
+			if (ext_time_n && (jj == 0x7FFF)) {
+				printf("more than 65532");
+			} else if (!ext_time_n && (jj == 0x00FF)) {
+				printf("more than 508");
+			} else {
+				printf("%u", jj * 2);
 			}
-			if (kk) {
-				if (kk == 0xff)
-					printf("more than 508");
-				else
-					printf("%u", kk * 2);
-				printf("min for ENHANCED SECURITY ERASE UNIT. ");
-			}
-			printf("\n");
+			printf("min for SECURITY ERASE UNIT.");
 		}
+		if ((jj != 0) && (kk != 0)) printf(" ");
+		if (kk != 0) {
+			if (ext_time_e && (kk == 0x7FFF)) {
+				printf("more than 65532");
+			} else if (!ext_time_e && (kk == 0x00FF)) {
+				printf("more than 508");
+			} else {
+				printf("%u", kk * 2);
+			}
+			printf("min for ENHANCED SECURITY ERASE UNIT.");
+		}
+		printf("\n");
 	}
+
+
 	//printf("w84=0x%04x w87=0x%04x like_std=%d\n", val[84], val[87], like_std);
 	if((eqpt != CDROM) && (like_std > 3) && (val[CMDS_SUPP_2] & WWN_SUP)) {
 		printf("Logical Unit WWN Device Identifier: %04x%04x%04x%04x\n", val[108], val[109], val[110], val[111]);

@@ -1,6 +1,8 @@
 Mark's TO-DO list for hdparm:
 ============================
 
+- Find a new maintainer.
+
 - Add "wipe-drive" functionality via SCT WRITE_SAME (or manual).
 
 - Add "surface-scan" functionality via SG READ_VERIFY.

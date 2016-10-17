@@ -2,7 +2,7 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2012 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.48"
+#define HDPARM_VERSION "v9.49"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -95,6 +95,24 @@ static int do_dco_freeze = 0, do_dco_restore = 0, do_dco_identify = 0, do_dco_se
 static unsigned int security_command = ATA_OP_SECURITY_UNLOCK;
 
 static char security_password[33], *fwpath;
+
+static int do_sanitize = 0;
+static __u16 sanitize_feature = 0;
+static __u32 ow_pattern = 0;
+static const char *sanitize_states_str[SANITIZE_STATE_NUMBER] = {
+	"SD0 Sanitize Idle",
+	"SD1 Sanitize Frozen",
+	"SD2 Sanitize operation In Process",
+	"SD3 Sanitize Operation Failed",
+	"SD4 Sanitize Operation succeeded"
+};
+static const char *sanitize_err_reason_str[SANITIZE_ERR_NUMBER] = {
+	"Reason not reported",
+	"Command unsuccessful",
+	"Unsupported command",
+	"Device in FROZEN state",
+	"Antifreeze lock enabled"
+};
 
 static int get_powermode  = 0, set_powermode = 0;
 static int set_apmmode = 0, get_apmmode= 0, apmmode = 0;
@@ -725,33 +743,178 @@ static void interpret_xfermode (unsigned int xfermode)
 
 static unsigned int get_erase_timeout_secs (int fd, int enhanced)
 {
-	unsigned int timeout = 0;
-	unsigned int idx = 89 + enhanced;
+	// Grab ID Data
+	get_identify_data(fd);
+
+	if (id == NULL) {
+		// ID pointer is invalid, return a default of twelve hours
+		return 12 * 60 * 60;
+	}
+
+	// Build an estimate at 1 second per 30MB of capacity (Norman Diamond suggestion)
+	// Add 30 mins of uncertainty
+	__u64 const lba_limit = get_lba_capacity(id);
+	__u64 const estimate  = ((lba_limit / 2048ULL) / 30ULL) + (30 * 60);
+
+	// Grab the timeout field from the ID
+	// If enhanced is non-zero then look at word 90, otherwise look at word 89
+	// If bit 15 is set, then the time field is bits [14:0]
+	// Otherwise the time field is bits [7:0] (ACS-3)
+	unsigned int const idx      = (enhanced != 0) ? 90: 89;
+	unsigned int       timeout  = id[idx];
+	unsigned int const ext_time = (timeout & (1 << 15)) != 0;
+
+	// Mask off reserved bits
+	timeout = ext_time ? timeout & 0x7FFF: timeout & 0x00FF;
+	if (timeout == 0) {
+		// Value is not specified, return the estimate
+		return estimate;
+	}
+
+	// Decode timeout (Add some wiggle room)
+	timeout = ( ext_time && (timeout == 0x7FFF)) ? 65532 + 90:         // Max ext time is > 65532 minutes
+	          (!ext_time && (timeout == 0x00FF)) ? 508 + 90:           // Max non-ext time is > 508 minutes
+	                                               (timeout * 2) + 60; // Time is id value * 2 mins
+	timeout *= 60; // Convert timeout to seconds
+
+	// Return the larger value between timeout and estimate
+	return (timeout < estimate) ? estimate: timeout;
+}
+static int
+get_sanitize_state(__u8 nsect)
+{
+	int state = SANITIZE_IDLE_STATE_SD0;
+	if (nsect & SANITIZE_FLAG_DEVICE_IN_FROZEN) {
+		state = SANITIZE_FROZEN_STATE_SD1;
+	} else if (nsect & SANITIZE_FLAG_OPERATION_IN_PROGRESS) {
+		state = SANITIZE_OPERATION_IN_PROGRESS_SD2;
+	} else if (!(nsect & SANITIZE_FLAG_OPERATION_SUCCEEDED)) {
+		state = SANITIZE_OPERATION_FAILED_SD3;
+	}
+	return state;
+}
+
+static void
+sanitize_normal_output(int sanitize_state, struct hdio_taskfile * r)
+{
+	printf("    State:    %s\n", sanitize_states_str[sanitize_state]);
+	if (sanitize_state == SANITIZE_OPERATION_IN_PROGRESS_SD2) {
+		int progress = (r->lob.lbam << 8) | r->lob.lbal;
+		int percent = (progress == 0xFFFF) ? (100) : ((100 * (progress + 1)) / 0xFFFF);
+		printf("    Progress: 0x%x (%d%%)\n", progress, percent);
+	}
+	if (r->hob.nsect & SANITIZE_FLAG_ANTIFREEZE_BIT)
+		printf("    Antifreeze bit set\n");
+}
+
+static void
+sanitize_error_output(struct hdio_taskfile * r)
+{
+	int err_reason = (r->lob.lbal >= SANITIZE_ERR_NUMBER) ? (SANITIZE_ERR_NO_REASON) : (r->lob.lbal);
+	fprintf(stderr, "SANITIZE device error reason: %s\n", sanitize_err_reason_str[err_reason]);
+}
+
+static void
+do_sanitize_cmd (int fd)
+{
+	int err = 0;
+	__u64 lba = 0;
+	const char *description;
+	int sanitize_state;
+	struct hdio_taskfile r;
 
 	get_identify_data(fd);
-	if (id) {
-		__u64 lba_limit = get_lba_capacity(id);
-		__u64 estimate = (lba_limit / 2048ULL) / 30ULL / 60;
-		estimate += 30;	/* fudge factor.. add another 30 minutes */
-		timeout = id[idx];
-		if (timeout && timeout <= 0xff) {
-			/*
-			 * 0xff means "more than 254 2-minute intervals (508+ minutes),
-			 * but we really want a better idea than that.
-			 * Norman Diamond suggests allowing 1sec per 30MB of capacity.
-			 */
-			if (timeout == 0xff)
-				timeout = 508 + 90;  /* spec says > 508 minutes */
-			else
-				timeout = (timeout * 2) + 60;  /* Add on a 60min margin */
+	if (!id)
+		exit(EIO);
+	if (id[59] & 0x1000) {
+
+		switch (sanitize_feature) {
+			case SANITIZE_STATUS_EXT:
+				description = "SANITIZE_STATUS";
+				break;
+			case SANITIZE_CRYPTO_SCRAMBLE_EXT:
+				lba = SANITIZE_CRYPTO_SCRAMBLR_KEY;
+				description = "SANITIZE_CRYPTO_SCRAMBLE";
+				break;
+			case SANITIZE_BLOCK_ERASE_EXT:
+				lba = SANITIZE_BLOCK_ERASE_KEY;
+				description = "SANITIZE_BLOCK_ERASE";
+				break;
+			case SANITIZE_OVERWRITE_EXT:
+				lba = ((__u64)(SANITIZE_OVERWRITE_KEY) << 32) | ow_pattern;
+				description = "SANITIZE_OVERWRITE";
+				break;
+			case SANITIZE_FREEZE_LOCK_EXT:
+				lba = SANITIZE_FREEZE_LOCK_KEY;
+				description = "SANITIZE_FREEZE_LOCK";
+				break;
+			case SANITIZE_ANTIFREEZE_LOCK_EXT:
+				lba = SANITIZE_ANTIFREEZE_LOCK_KEY;
+				description = "SANITIZE_ANTIFREEZE_LOCK";
+				break;
+			default:
+				fprintf(stderr, "BUG in do_sanitize_cmd(), feat=0x%x\n", sanitize_feature);
+				exit(EINVAL);
 		}
-		if (timeout < estimate)
-			timeout = estimate;
+
+		memset(&r, 0, sizeof(r));
+		r.cmd_req = TASKFILE_CMD_REQ_NODATA;
+		r.dphase  = TASKFILE_DPHASE_NONE;
+
+		r.oflags.bits.lob.dev     = 1;
+		r.oflags.bits.lob.command = 1;
+		r.oflags.bits.lob.feat    = 1;
+		r.oflags.bits.lob.lbal    = 1;
+		r.oflags.bits.lob.lbam    = 1;
+		r.oflags.bits.lob.lbah    = 1;
+		r.oflags.bits.hob.lbal    = 1;
+		r.oflags.bits.hob.lbam    = 1;
+		r.oflags.bits.hob.lbah    = 1;
+
+		r.lob.dev     = 0x40;
+		r.lob.command = ATA_OP_SANITIZE;
+		r.lob.feat    = sanitize_feature;
+		r.lob.lbal    = lba;
+		r.lob.lbam    = lba >>  8;
+		r.lob.lbah    = lba >> 16;
+		r.hob.lbal    = lba >> 24;
+		r.hob.lbam    = lba >> 32;
+		r.hob.lbah    = lba >> 40;
+
+		r.iflags.bits.lob.lbal    = 1;
+		r.iflags.bits.lob.lbam    = 1;
+		r.iflags.bits.hob.nsect   = 1;
+
+		printf("Issuing %s command\n", description);
+		if (do_taskfile_cmd(fd, &r, 10)) {
+			err = errno;
+			perror("SANITIZE failed");
+			sanitize_error_output(&r);
+		}
+		else {
+			switch (sanitize_feature) {
+				case SANITIZE_STATUS_EXT:
+					printf("Sanitize status:\n");
+					sanitize_state = get_sanitize_state(r.hob.nsect);
+					sanitize_normal_output(sanitize_state, &r);
+					break;
+				case SANITIZE_BLOCK_ERASE_EXT:
+				case SANITIZE_OVERWRITE_EXT:
+				case SANITIZE_CRYPTO_SCRAMBLE_EXT:
+					printf("Operation started in background\n");
+					printf("You may use `--sanitize-status` to check progress\n");
+					break;
+				default:
+					//nothing here
+					break;
+			}
+		}
+	} else {
+		fprintf(stderr, "SANITIZE feature set is not supported\n");
+		exit(EINVAL);
 	}
-	if (!timeout)
-		timeout = 12 * 60;  /* default: twelve hours */
-	timeout *= 60; /* convert minutes to seconds */
-	return timeout;
+	if (err)
+		exit(err);
 }
 
 static void
@@ -775,7 +938,7 @@ do_set_security (int fd)
 	r->obytes	= 512;
 	r->lob.command	= security_command;
 	r->oflags.bits.lob.nsect = 1;
-	r->lob.nsect        = 1;
+	r->lob.nsect    = 1;
 	data		= (__u8*)r->data;
 	data[0]		= security_master & 0x01;
 	memcpy(data+2, security_password, 32);
@@ -1129,33 +1292,62 @@ static __u64 do_get_native_max_sectors (int fd)
 	r.iflags.bits.lob.lbah     = 1;
 	r.lob.dev = 0x40;
 
-	if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
-		r.iflags.bits.hob.lbal  = 1;
-		r.iflags.bits.hob.lbam  = 1;
-		r.iflags.bits.hob.lbah  = 1;
-		r.lob.command = ATA_OP_READ_NATIVE_MAX_EXT;
-		if (do_taskfile_cmd(fd, &r, 10)) {
-			err = errno;
-			perror (" READ_NATIVE_MAX_ADDRESS_EXT failed");
+	if((id[80]&0x400)==0x400) { //ACS3 supported
+		if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
+			r.iflags.bits.hob.lbal 	= 1;
+			r.iflags.bits.hob.lbam 	= 1;
+			r.iflags.bits.hob.lbah	= 1;
+			r.lob.command = ATA_OP_GET_NATIVE_MAX_EXT;
+			if (do_taskfile_cmd(fd, &r, 10)) {
+				err = errno;
+				perror (" READ_NATIVE_MAX_ADDRESS_EXT failed");
+			} else {
+				if (verbose)
+					printf("READ_NATIVE_MAX_ADDRESS_EXT response: hob={%02x %02x %02x} lob={%02x %02x %02x}\n",
+						r.hob.lbah, r.hob.lbam, r.hob.lbal, r.lob.lbah, r.lob.lbam, r.lob.lbal);
+				max = (((__u64)((r.hob.lbah << 16) | (r.hob.lbam << 8) | r.hob.lbal) << 24)
+					 | ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
+			}
 		} else {
-			if (verbose)
-				printf("READ_NATIVE_MAX_ADDRESS_EXT response: hob={%02x %02x %02x} lob={%02x %02x %02x}\n",
-					r.hob.lbah, r.hob.lbam, r.hob.lbal, r.lob.lbah, r.lob.lbam, r.lob.lbal);
-			max = (((__u64)((r.hob.lbah << 16) | (r.hob.lbam << 8) | r.hob.lbal) << 24)
-				     | ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
-		}
-	} else {
-		r.iflags.bits.lob.dev = 1;
-		r.lob.command = ATA_OP_READ_NATIVE_MAX;
-		if (do_taskfile_cmd(fd, &r, 0)) {
-			err = errno;
-			perror (" READ_NATIVE_MAX_ADDRESS failed");
+			r.iflags.bits.lob.dev = 1;
+			r.lob.command = ATA_OP_GET_NATIVE_MAX_EXT;
+			if (do_taskfile_cmd(fd, &r, timeout_15secs)) {
+				err = errno;
+				perror (" READ_NATIVE_MAX_ADDRESS failed");
+			} else {
+				max = ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
+			}
+		}	
+	} else { //ACS2 supported	
+		if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
+			r.iflags.bits.hob.lbal  = 1;
+			r.iflags.bits.hob.lbam  = 1;
+			r.iflags.bits.hob.lbah  = 1;
+			r.lob.command = ATA_OP_READ_NATIVE_MAX_EXT;
+			if (do_taskfile_cmd(fd, &r, 10)) {
+				err = errno;
+				perror (" READ_NATIVE_MAX_ADDRESS_EXT failed");
+			} else {
+				if (verbose)
+					printf("READ_NATIVE_MAX_ADDRESS_EXT response: hob={%02x %02x %02x} lob={%02x %02x %02x}\n",
+						r.hob.lbah, r.hob.lbam, r.hob.lbal, r.lob.lbah, r.lob.lbam, r.lob.lbal);
+				max = (((__u64)((r.hob.lbah << 16) | (r.hob.lbam << 8) | r.hob.lbal) << 24)
+				     	| ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
+			}
 		} else {
-			max = (((r.lob.dev & 0x0f) << 24) | (r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
+			r.iflags.bits.lob.dev = 1;
+			r.lob.command = ATA_OP_READ_NATIVE_MAX;
+			if (do_taskfile_cmd(fd, &r, 0)) {
+				err = errno;
+				perror (" READ_NATIVE_MAX_ADDRESS failed");
+			} else {
+				max = (((r.lob.dev & 0x0f) << 24) | (r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
+			}
 		}
 	}
 	errno = err;
 	return max;
+	
 }
 
 static int do_make_bad_sector (int fd, __u64 lba, const char *devname)
@@ -1513,11 +1705,33 @@ static int do_set_max_sectors (int fd, __u64 max_lba, int permanent)
 	int err = 0;
 	struct hdio_taskfile r;
 	__u8 nsect = permanent ? 1 : 0;
-
+	
 	get_identify_data(fd);
 	if (!id)
 		exit(EIO);
-	if ((max_lba >= lba28_limit) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
+	
+	if((id[80]&0x400)==0x400){
+		//ACS3 supported
+		if ((max_lba >> 28) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
+
+			init_hdio_taskfile(&r, ATA_OP_GET_NATIVE_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
+			r.oflags.bits.lob.feat = 1;
+			r.lob.feat = 0x01;
+		} else {
+			init_hdio_taskfile(&r, ATA_OP_GET_NATIVE_MAX_EXT, RW_READ, LBA28_OK, max_lba, nsect, 0);
+			r.oflags.bits.lob.feat = 1; /*this ATA op requires feat == 0 */
+		}
+
+		if (do_taskfile_cmd(fd, &r, timeout_15secs)) {
+			err = errno;
+			perror(" SET_MAX_ADDRESS failed");
+		}
+
+		return err;
+
+		}
+	else{
+		if ((max_lba >= lba28_limit) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
 	} else {
 		init_hdio_taskfile(&r, ATA_OP_SET_MAX, RW_READ, LBA28_OK, max_lba, nsect, 0);
@@ -1534,6 +1748,7 @@ static int do_set_max_sectors (int fd, __u64 max_lba, int permanent)
 		perror(" SET_MAX_ADDRESS failed");
 	}
 	return err;
+	}
 }
 
 static void usage_help (int clue, int rc)
@@ -1613,11 +1828,17 @@ static void usage_help (int clue, int rc)
 	" --prefer-ata12    Use 12-byte (instead of 16-byte) SAT commands when possible\n"
 	" --read-sector     Read and dump (in hex) a sector directly from the media\n"
 	" --repair-sector   Alias for the --write-sector option (VERY DANGEROUS)\n"
-	" --security-help   Display help for ATA security commands\n"
+	" --sanitize-antifreeze-lock  Block sanitize-freeze-lock command until next power cycle\n"
+	" --sanitize-block-erase      Start block erase operation\n"
+	" --sanitize-crypto-scramble  Change the internal encryption keys that used for used data\n"
+	" --sanitize-freeze-lock      Lock drive's sanitize features until next power cycle\n"
+	" --sanitize-overwrite  PATTERN  Overwrite the internal media with constant PATTERN\n"
+	" --sanitize-status           Show sanitize status information\n"
+	" --security-help             Display help for ATA security commands\n"
 	" --trim-sector-ranges        Tell SSD firmware to discard unneeded data sectors: lba:count ..\n"
 	" --trim-sector-ranges-stdin  Same as above, but reads lba:count pairs from stdin\n"
-	" --verbose         Display extra diagnostics from some commands\n"
-	" --write-sector    Repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
+	" --verbose                   Display extra diagnostics from some commands\n"
+	" --write-sector              Repair/overwrite a (possibly bad) sector directly on the media (VERY DANGEROUS)\n"
 	"\n");
 	exit(rc);
 }
@@ -1979,6 +2200,12 @@ void process_dev (char *devname)
 	}
 	if (set_security) {
 		do_set_security(fd);
+	}
+	if (do_sanitize) {
+		if (do_sanitize > 1) {
+			confirm_i_know_what_i_am_doing("--sanitize", "This sanitize command destroys all user data.");
+		}
+		do_sanitize_cmd(fd);
 	}
 	if (do_dco_identify) {
 		__u16 *dco = get_dco_identify_data(fd, 0);
@@ -2383,10 +2610,22 @@ void process_dev (char *devname)
 				err = errno;
 			} else {
 				printf(" max sectors   = %llu/%llu", visible, native);
-				if (visible < native)
+				if (visible < native){
+
+					if((id[80]&0x400)==0x400){
+						printf(", ACCESSIBLE MAX ADDRESS enabled\n");
+						printf("Power cycle your device after every ACCESSIBLE MAX ADDRESS\n");
+
+					}
+					else
 					printf(", HPA is enabled\n");
-				else if (visible == native)
+				}
+				else if (visible == native){
+					if((id[80]&0x400)==0x400)
+						printf(", ACCESSIBLE MAX ADDRESS disabled\n");
+				else
 					printf(", HPA is disabled\n");
+				}
 				else {
 					__u16 *dco = get_dco_identify_data(fd, 1);
 					if (dco) {
@@ -2398,11 +2637,12 @@ void process_dev (char *devname)
 					if ((native & 0xffffff000000ull) == 0)
 						printf(" (buggy kernel device driver?)");
 					putchar('\n');
+					}
 				}
 			}
-		}
-	}
+		
 
+	}	
 	if (do_ctimings)
 		time_cache(fd);
 	if (do_flush_wcache)
@@ -2612,6 +2852,34 @@ static void get_security_password (int handle_NULL)
 		++argp;
 }
 
+static void get_ow_pattern (void)
+{
+	unsigned int maxlen = sizeof(ow_pattern);
+
+	argp = *argv++, --argc;
+	if (!argp || argc < 1) {
+		fprintf(stderr, "missing PATTERN\n");
+		exit(EINVAL);
+	}
+	if (0 == strncmp(argp, "hex:", 4)) {
+		argp += 4;
+		if (strlen(argp) != (maxlen * 2)) {
+			fprintf(stderr, "invalid PATTERN length (hex string must be exactly %d chars)\n", maxlen*2);
+			exit(EINVAL);
+		}
+		int i = 28;
+		ow_pattern = 0;
+		while (*argp) {
+			ow_pattern |= fromhex(*argp++) << i;
+			i -= 4;
+		}
+
+	} else {
+		fprintf(stderr, "invalid PATTERN format (must be hex:XXXXXXXX)\n");
+		exit(EINVAL);
+	}
+}
+
 static const char *lba_emsg = "bad/missing sector value";
 static const char *count_emsg = "bad/missing sector count";
 static const __u64 lba_limit = (1ULL << 48) - 1;
@@ -2713,7 +2981,27 @@ handle_standalone_longarg (char *name)
 		enhanced_erase = 1;
 		security_command = ATA_OP_SECURITY_ERASE_UNIT;
 		get_security_password(1);
-	} else {
+	} else if (0 == strcasecmp(name, "sanitize-status")) {
+		do_sanitize = 1;
+		sanitize_feature = SANITIZE_STATUS_EXT;
+	} else if (0 == strcasecmp(name, "sanitize-freeze-lock")) {
+		do_sanitize = 1;
+		sanitize_feature = SANITIZE_FREEZE_LOCK_EXT;
+	} else if (0 == strcasecmp(name, "sanitize-antifreeze-lock")) {
+		do_sanitize = 1;
+		sanitize_feature = SANITIZE_ANTIFREEZE_LOCK_EXT;
+	} else if (0 == strcasecmp(name, "sanitize-block-erase")) {
+		do_sanitize = 2;
+		sanitize_feature = SANITIZE_BLOCK_ERASE_EXT;
+	} else if (0 == strcasecmp(name, "sanitize-crypto-scramble")) {
+		do_sanitize = 2;
+		sanitize_feature = SANITIZE_CRYPTO_SCRAMBLE_EXT;
+	} else if (0 == strcasecmp(name, "sanitize-overwrite")) {
+		do_sanitize = 2;
+		get_ow_pattern();
+		sanitize_feature = SANITIZE_OVERWRITE_EXT;
+	}
+	else {
 		usage_help(3,EINVAL);
 	}
 }
@@ -2975,6 +3263,7 @@ int main (int _argc, char **_argv)
 				case GET_SET_PARM('W',"write-cache",wcache,0,1);
 				case     SET_FLAG('y',standbynow);
 				case     SET_FLAG('Y',sleepnow);
+
 				case     SET_FLAG('z',reread_partn);
 				case     SET_FLAG('Z',seagate);
 

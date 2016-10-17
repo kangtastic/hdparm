@@ -35,7 +35,7 @@ static int send_firmware (int fd, unsigned int xfer_mode, unsigned int offset,
 	int err = 0;
 	struct hdio_taskfile *r;
 	unsigned int blockcount = bytecount / 512;
-	unsigned int timeout_secs = 20;
+	unsigned int timeout_secs = 120;
 	__u64 lba;
 
 	lba = ((offset / 512) << 8) | ((blockcount >> 8) & 0xff);
