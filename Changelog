@@ -1,3 +1,5 @@
+hdparm-9.50:
+	- minor fixes for sanitize device stuff.
 hdparm-9.49:
 	- add ACS-3 overprovisioning support, courtesy of Intel.
 	- fix bug in display of security section and use updated erase-time values from ACS-3, courtesy of Patrick Higgins.

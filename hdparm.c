@@ -2,7 +2,7 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2012 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.49"
+#define HDPARM_VERSION "v9.50"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -108,7 +108,7 @@ static const char *sanitize_states_str[SANITIZE_STATE_NUMBER] = {
 };
 static const char *sanitize_err_reason_str[SANITIZE_ERR_NUMBER] = {
 	"Reason not reported",
-	"Command unsuccessful",
+	"Last Sanitize Command completed unsuccessfully",
 	"Unsupported command",
 	"Device in FROZEN state",
 	"Antifreeze lock enabled"
@@ -788,8 +788,6 @@ get_sanitize_state(__u8 nsect)
 		state = SANITIZE_FROZEN_STATE_SD1;
 	} else if (nsect & SANITIZE_FLAG_OPERATION_IN_PROGRESS) {
 		state = SANITIZE_OPERATION_IN_PROGRESS_SD2;
-	} else if (!(nsect & SANITIZE_FLAG_OPERATION_SUCCEEDED)) {
-		state = SANITIZE_OPERATION_FAILED_SD3;
 	}
 	return state;
 }
@@ -803,6 +801,9 @@ sanitize_normal_output(int sanitize_state, struct hdio_taskfile * r)
 		int percent = (progress == 0xFFFF) ? (100) : ((100 * (progress + 1)) / 0xFFFF);
 		printf("    Progress: 0x%x (%d%%)\n", progress, percent);
 	}
+	if (r->hob.nsect & SANITIZE_FLAG_OPERATION_SUCCEEDED) {
+		printf("    Last Sanitize Operation Completed Without Error\n");
+	}
 	if (r->hob.nsect & SANITIZE_FLAG_ANTIFREEZE_BIT)
 		printf("    Antifreeze bit set\n");
 }
@@ -812,6 +813,8 @@ sanitize_error_output(struct hdio_taskfile * r)
 {
 	int err_reason = (r->lob.lbal >= SANITIZE_ERR_NUMBER) ? (SANITIZE_ERR_NO_REASON) : (r->lob.lbal);
 	fprintf(stderr, "SANITIZE device error reason: %s\n", sanitize_err_reason_str[err_reason]);
+	if (err_reason == SANITIZE_ERR_CMD_UNSUCCESSFUL)
+		fprintf(stderr, "Drive in %s state\n", sanitize_states_str[SANITIZE_OPERATION_FAILED_SD3]);
 }
 
 static void
