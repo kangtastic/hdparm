@@ -1,4 +1,4 @@
-.TH HDPARM 8 "October 2016" "Version 9.50"
+.TH HDPARM 8 "January 2017" "Version 9.51"
 
 .SH NAME
 hdparm \- get/set SATA/IDE device parameters
@@ -509,7 +509,7 @@ and an unsuccessful outcome may result in
 .TP
 .I -P
 Set the maximum sector count for the drive\'s internal prefetch mechanism.
-Not all drives support this feature, and it was dropped from the offical spec
+Not all drives support this feature, and it was dropped from the official spec
 as of ATA-4.
 .TP
 .I --prefer-ata12
@@ -779,6 +779,10 @@ Use this function in combination with \--security-unlock to protect drive
 from any attempt to set a new password. Can be used standalone, too.
 No other options are permitted on the command line with this one.
 .TP
+.I --security-prompt-for-password
+Prompt for the --security PWD rather than getting from the command line args.
+This avoids having passwords show up in shell history or in /proc/self/cmdline during execution.
+.TP
 .I --security-unlock PWD 
 Unlock the drive, using password PWD.
 Password is given as an ASCII string and is padded with NULs to reach 32 bytes.
@@ -875,7 +879,7 @@ consecutively and issue the two necessary commands that way.
 .SH AUTHOR
 .B hdparm
 has been written by Mark Lord <mlord@pobox.com>, the original primary
-developer and maintainer of the (E)IDE driver for Linux, and current contributer
+developer and maintainer of the (E)IDE driver for Linux, and current contributor
 to the libata subsystem, along with suggestions and patches from many netfolk.
 .PP
 The disable Seagate auto-powersaving code

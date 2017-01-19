@@ -1,8 +1,10 @@
 Begin4
 Title:		hdparm
-Version:	9.50
-Entered-date:	2016-10-19
+Version:	9.51
+Entered-date:	2017-01-19
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.51 minor fixes/tweaks, new --security-prompt-for-password flag.
+		v9.50 minor fixes for sanitize device stuff.
 		v9.49 bugfixes and ACS-3 enhancements.
 		v9.48 fix devslp bugs
 		v9.47 devslp reporting support
@@ -123,7 +125,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		133K hdparm-9.50.tar.gz
+		133K hdparm-9.51.tar.gz
 		4K hdparm.lsm
 Platforms:	Linux
 Copying-policy:	BSD License

@@ -25,7 +25,7 @@ INSTALL_PROGRAM = $(INSTALL)
 OBJS = hdparm.o identify.o sgio.o sysfs.o geom.o fallocate.o fibmap.o fwdownload.o dvdspeed.o wdidle3.o
 
 all:
-	make -j2 hdparm
+	$(MAKE) -j4 hdparm
 
 hdparm: hdparm.h sgio.h $(OBJS)
 	$(CC) $(LDFLAGS) -o hdparm $(OBJS)

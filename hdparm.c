@@ -2,7 +2,7 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2012 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.50"
+#define HDPARM_VERSION "v9.51"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -87,6 +87,7 @@ static int set_standbynow = 0, get_standbynow = 0;
 static int set_sleepnow   = 0, get_sleepnow   = 0;
 static int set_powerup_in_standby = 0, get_powerup_in_standby = 0, powerup_in_standby = 0;
 static int get_hitachi_temp = 0, set_hitachi_temp = 0;
+static int security_prompt_for_password = 0;
 static int security_freeze   = 0;
 static int security_master = 0, security_mode = 0;
 static int enhanced_erase = 0;
@@ -172,7 +173,7 @@ static int open_flags = O_RDONLY|O_NONBLOCK;
 
 const char *cfg_str[] =
 {	"",	        " HardSect",   " SoftSect",  " NotMFM",
-	" HdSw>15uSec", " SpinMotCtl", " Fixed",     " Removeable",
+	" HdSw>15uSec", " SpinMotCtl", " Fixed",     " Removable",
 	" DTR<=5Mbs",   " DTR>5Mbs",   " DTR>10Mbs", " RotSpdTol>.5%",
 	" dStbOff",     " TrkOff",     " FmtGapReq", " nonMagnetic"
 };
@@ -836,7 +837,7 @@ do_sanitize_cmd (int fd)
 				description = "SANITIZE_STATUS";
 				break;
 			case SANITIZE_CRYPTO_SCRAMBLE_EXT:
-				lba = SANITIZE_CRYPTO_SCRAMBLR_KEY;
+				lba = SANITIZE_CRYPTO_SCRAMBLE_KEY;
 				description = "SANITIZE_CRYPTO_SCRAMBLE";
 				break;
 			case SANITIZE_BLOCK_ERASE_EXT:
@@ -1759,7 +1760,7 @@ static void usage_help (int clue, int rc)
 	FILE *desc = rc ? stderr : stdout;
 
 	fprintf(desc,"\n%s - get/set hard disk parameters - version " HDPARM_VERSION ", by Mark Lord.\n\n", progname);
-	if (0) if (rc) fprintf(desc, "clue=%d\n", clue);
+	if (1) if (rc) fprintf(desc, "clue=%d\n", clue);
 	fprintf(desc,"Usage:  %s  [options] [device ...]\n\n", progname);
 	fprintf(desc,"Options:\n"
 	" -a   Get/set fs readahead\n"
@@ -2814,6 +2815,20 @@ static void get_security_password (int handle_NULL)
 	unsigned int maxlen = sizeof(security_password) - 1;
 	unsigned int binary_passwd = 0;
 
+	if (security_prompt_for_password) {
+		const char *passwd = getpass("Please enter the drive password: ");
+		if (passwd == NULL) {
+			fprintf(stderr, "failed to read a password, errno=%d\n", errno);
+			exit(EINVAL);
+		}
+		if (strlen(passwd) >= sizeof(security_password)) {
+			fprintf(stderr, "password is too long (%u chars max)\n", (int)sizeof(security_password) - 1);
+			exit(EINVAL);
+		}
+		strcpy(security_password, passwd);
+		return;
+	}
+
 	argp = *argv++, --argc;
 	if (!argp || argc < 1) {
 		fprintf(stderr, "missing PASSWD\n");
@@ -2938,19 +2953,19 @@ get_set_max_sectors_parms_dco (void)
 	do_dco_setmax = get_u64_parm(0, 0, NULL, &set_max_addr, 1, lba_limit, "--dco-setmax", lba_emsg);
 }
 
-static void
+static int
 handle_standalone_longarg (char *name)
 {
 	if (num_flags_processed) {
 		if (verbose)
-			fprintf(stderr, "handle_standalone_longarg: num_flags_processed == %d\n", num_flags_processed);
+			fprintf(stderr, "%s: num_flags_processed == %d\n", __func__, num_flags_processed);
 		usage_help(1,EINVAL);
 	}
 	/* --Istdin is special: no filename arg(s) wanted here */
 	if (0 == strcasecmp(name, "Istdin")) {
 		if (argc > 0) {
 			if (verbose)
-				fprintf(stderr, "handle_standalone_longarg: argc(%d) > 0\n", argc);
+				fprintf(stderr, "%s: argc(%d) > 0\n", __func__, argc);
 			usage_help(2,EINVAL);
 		}
 		identify_from_stdin();
@@ -2966,7 +2981,7 @@ handle_standalone_longarg (char *name)
 	} else if (0 == strcasecmp(name, "security-unlock")) {
 		set_security = 1;
 		security_command = ATA_OP_SECURITY_UNLOCK;
-		get_security_password(0);
+		get_security_password(1);
 	} else if (0 == strcasecmp(name, "security-set-pass")) {
 		set_security = 1;
 		security_command = ATA_OP_SECURITY_SET_PASS;
@@ -3005,8 +3020,11 @@ handle_standalone_longarg (char *name)
 		sanitize_feature = SANITIZE_OVERWRITE_EXT;
 	}
 	else {
-		usage_help(3,EINVAL);
+		fprintf(stderr, "%s: unknown flag\n", name);
+		exit(EINVAL);
+		//usage_help(3,EINVAL);
 	}
+	return 1;  // no more flags allowed
 }
 
 static void
@@ -3169,6 +3187,9 @@ get_longarg (void)
 			while (*argp) ++argp;
 		}
 		--num_flags_processed;	/* doesn't count as an action flag */
+	} else if (0 == strcasecmp(name, "security-prompt-for-password")) {
+		security_prompt_for_password = 1;
+		--num_flags_processed;	/* doesn't count as an action flag */
 	} else if (0 == strcasecmp(name, "user-master")) {
 		if (argc && isalpha(**argv)) {
 			argp = *argv++, --argc;
@@ -3184,8 +3205,7 @@ get_longarg (void)
 	} else if (0 == strcasecmp(name, "security-freeze")) {
 		security_freeze = 1;
 	} else {
-		handle_standalone_longarg(name);
-		return 1; /* 1 == no more flags allowed */
+		return handle_standalone_longarg(name);
 	}
 	return 0; /* additional flags allowed */
 }
@@ -3220,8 +3240,10 @@ int main (int _argc, char **_argv)
 			no_more_flags = 1;
 			continue;
 		}
-		if (disallow_flags)
+		if (disallow_flags) {
+			fprintf(stderr, "Excess flags given.\n");
 			usage_help(7,EINVAL);
+		}
 		if (!*++argp)
 			usage_help(8,EINVAL);
 		while (argp && (c = *argp++)) {
