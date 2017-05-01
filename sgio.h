@@ -236,3 +236,7 @@ int do_taskfile_cmd (int fd, struct hdio_taskfile *r, unsigned int timeout_secs)
 int dev_has_sgio (int fd);
 void init_hdio_taskfile (struct hdio_taskfile *r, __u8 ata_op, int rw, int force_lba48,
 				__u64 lba, unsigned int nsect, int data_bytes);
+
+/* APT */
+int apt_sg16(int fd, int rw, int dma, struct ata_tf *tf,
+		void *data, unsigned int data_bytes, unsigned int timeout_secs);

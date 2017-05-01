@@ -1,4 +1,6 @@
 hdparm-9.51:
+	- add support for Jmicron USB-SATA bridges, courtesy Jan Friesse <jfriesse@gmail.com>.
+hdparm-9.51:
 	- New --security-prompt-for-password flag for use with the various --security- actions.
 	- Makefile tweak from Mike Frysinger.
 	- fix spelling/typos in man page and "removable", courtesy of Alex Mestiashvili.

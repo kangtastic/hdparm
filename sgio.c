@@ -198,6 +198,10 @@ int sg16 (int fd, int rw, int dma, struct ata_tf *tf,
 	if (tf->command == ATA_OP_PIDENTIFY)
 		prefer12 = 0;
 
+	if (apt_is_apt()) {
+		return apt_sg16(fd, rw, dma, tf, data, data_bytes, timeout_secs);
+	}
+
 	memset(&cdb, 0, sizeof(cdb));
 	memset(&sb,     0, sizeof(sb));
 	memset(&io_hdr, 0, sizeof(struct scsi_sg_io_hdr));

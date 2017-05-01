@@ -1,8 +1,8 @@
 /*
  * hdparm.c - Command line interface to get/set hard disk parameters.
- *          - by Mark Lord (C) 1994-2012 -- freely distributable.
+ *          - by Mark Lord (C) 1994-2017 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.51"
+#define HDPARM_VERSION "v9.52"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -1893,6 +1893,13 @@ void process_dev (char *devname)
 	}
 	if (!quiet)
 		printf("\n%s:\n", devname);
+
+	if (apt_detect(fd, verbose) == -1) {
+		err = errno;
+		perror(devname);
+		close(fd);
+		exit(err);
+	}
 
 	if (trim_from_stdin) {
 		if (num_flags_processed > 1 || argc)

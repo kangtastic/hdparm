@@ -16,6 +16,8 @@ void no_xt (void);
 void process_dev (char *devname);
 int sysfs_get_attr (int fd, const char *attr, const char *fmt, void *val1, void *val2, int verbose);
 int sysfs_set_attr (int fd, const char *attr, const char *fmt, void *val_p, int verbose);
+int sysfs_get_attr_recursive (int fd, const char *attr, const char *fmt, void *val1, void *val2, int verbose);
+
 int get_dev_geometry (int fd, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *start_lba, __u64 *nsectors);
 int get_dev_t_geometry (dev_t dev, __u32 *cyls, __u32 *heads, __u32 *sects, __u64 *start_lba, __u64 *nsectors);
 int do_filemap(const char *file_name);
@@ -31,6 +33,10 @@ void wdidle3_print_timeout (unsigned char timeout);
 unsigned char wdidle3_msecs_to_timeout (unsigned int msecs);
 
 int get_id_log_page_data (int fd, __u8 pagenr, __u8 *buf);
+
+/* APT Functions */
+int apt_detect (int fd, int verbose);
+int apt_is_apt (void);
 
 extern const char *BuffType[4];
 
