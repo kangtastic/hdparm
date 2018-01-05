@@ -160,9 +160,16 @@ int fwdownload (int fd, __u16 *id, const char *fwpath, int xfer_mode)
 	} else if (xfer_mode == 3) {
 		xfer_size = xfer_min;
 	} else if (xfer_mode == 0x0e) {
+#if 0
 		xfer_size = xfer_max;
 	} else if (xfer_mode == 0xe0) {
 		xfer_size = xfer_min;
+#else
+		xfer_size = xfer_min;
+	} else if (xfer_mode == 0xe0) {
+		xfer_mode = 0x0e;
+		xfer_size = xfer_max;
+#endif
 	} else {
 		xfer_size = st.st_size / 512;
 		if (xfer_size > 0xffff) {

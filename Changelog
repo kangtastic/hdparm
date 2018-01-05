@@ -1,3 +1,10 @@
+hdparm-9.53:
+	- Read Drive Capacity fixes from Iestyn Walters.
+	- SET MAX ADDRESS fixes from Tom Yan <tom.ty89@gmail.com>.
+	- added --security-prompt-for-password to --security-help output.
+	- fwdownload changes from Jihoon Lee.
+hdparm-9.52:
+	- Jmicron SATA-USB bridge support from Jan Friesse <jfriesse@gmail.com>.
 hdparm-9.51:
 	- add support for Jmicron USB-SATA bridges, courtesy Jan Friesse <jfriesse@gmail.com>.
 hdparm-9.51:

@@ -2,7 +2,7 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2017 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.52"
+#define HDPARM_VERSION "v9.53"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -427,6 +427,10 @@ static void dmpstr (const char *prefix, unsigned int i, const char *s[], unsigne
 }
 
 static __u16 *id;
+#define SUPPORTS_ACS3(id) ((id)[80] & 0x400)
+#define SUPPORTS_AMAX_ADDR(id) (SUPPORTS_ACS3(id) && ((id)[119] & (1u << 8)))
+#define SUPPORTS_48BIT_ADDR(id) ((((id)[83] & 0xc400) == 0x4400) && ((id)[86] & 0x0400))
+
 static void get_identify_data (int fd);
 
 static __u64 get_lba_capacity (__u16 *idw)
@@ -865,7 +869,6 @@ do_sanitize_cmd (int fd)
 		r.cmd_req = TASKFILE_CMD_REQ_NODATA;
 		r.dphase  = TASKFILE_DPHASE_NONE;
 
-		r.oflags.bits.lob.dev     = 1;
 		r.oflags.bits.lob.command = 1;
 		r.oflags.bits.lob.feat    = 1;
 		r.oflags.bits.lob.lbal    = 1;
@@ -875,7 +878,6 @@ do_sanitize_cmd (int fd)
 		r.oflags.bits.hob.lbam    = 1;
 		r.oflags.bits.hob.lbah    = 1;
 
-		r.lob.dev     = 0x40;
 		r.lob.command = ATA_OP_SANITIZE;
 		r.lob.feat    = sanitize_feature;
 		r.lob.lbal    = lba;
@@ -1288,47 +1290,40 @@ static __u64 do_get_native_max_sectors (int fd)
 	memset(&r, 0, sizeof(r));
 	r.cmd_req = TASKFILE_CMD_REQ_NODATA;
 	r.dphase  = TASKFILE_DPHASE_NONE;
-	r.oflags.bits.lob.dev      = 1;
 	r.oflags.bits.lob.command  = 1;
 	r.iflags.bits.lob.command  = 1;
 	r.iflags.bits.lob.lbal     = 1;
 	r.iflags.bits.lob.lbam     = 1;
 	r.iflags.bits.lob.lbah     = 1;
-	r.lob.dev = 0x40;
 
-	if((id[80]&0x400)==0x400) { //ACS3 supported
-		if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
-			r.iflags.bits.hob.lbal 	= 1;
-			r.iflags.bits.hob.lbam 	= 1;
-			r.iflags.bits.hob.lbah	= 1;
-			r.lob.command = ATA_OP_GET_NATIVE_MAX_EXT;
-			if (do_taskfile_cmd(fd, &r, 10)) {
-				err = errno;
-				perror (" READ_NATIVE_MAX_ADDRESS_EXT failed");
-			} else {
-				if (verbose)
-					printf("READ_NATIVE_MAX_ADDRESS_EXT response: hob={%02x %02x %02x} lob={%02x %02x %02x}\n",
-						r.hob.lbah, r.hob.lbam, r.hob.lbal, r.lob.lbah, r.lob.lbam, r.lob.lbal);
-				max = (((__u64)((r.hob.lbah << 16) | (r.hob.lbam << 8) | r.hob.lbal) << 24)
-					 | ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
-			}
+	if (SUPPORTS_AMAX_ADDR(id)) {
+		/* ACS3 supported, no 28-bit variant defined in spec */
+		r.iflags.bits.hob.lbal 	= 1;
+		r.iflags.bits.hob.lbam 	= 1;
+		r.iflags.bits.hob.lbah	= 1;
+		r.oflags.bits.lob.feat  = 1;
+		r.lob.command = ATA_OP_GET_NATIVE_MAX_EXT;
+		r.lob.feat = 0x00; //GET NATIVE MAX ADDRESS EXT is 78h/0000h
+		//bit 6 of DEVICE field is defined as "N/A"
+		if (do_taskfile_cmd(fd, &r, 0)) {
+			err = errno;
+			perror (" GET_NATIVE_MAX_ADDRESS_EXT failed");
 		} else {
-			r.iflags.bits.lob.dev = 1;
-			r.lob.command = ATA_OP_GET_NATIVE_MAX_EXT;
-			if (do_taskfile_cmd(fd, &r, timeout_15secs)) {
-				err = errno;
-				perror (" READ_NATIVE_MAX_ADDRESS failed");
-			} else {
-				max = ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
-			}
-		}	
-	} else { //ACS2 supported	
-		if (((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400)) {
+			if (verbose)
+				printf("GET_NATIVE_MAX_ADDRESS_EXT response: hob={%02x %02x %02x} lob={%02x %02x %02x}\n",
+					   r.hob.lbah, r.hob.lbam, r.hob.lbal, r.lob.lbah, r.lob.lbam, r.lob.lbal);
+			max = (((__u64)((r.hob.lbah << 16) | (r.hob.lbam << 8) | r.hob.lbal) << 24)
+				   | ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
+		}
+	} else { // ACS2 or below, or optional AMAX not present
+		if (SUPPORTS_48BIT_ADDR(id)) {
 			r.iflags.bits.hob.lbal  = 1;
 			r.iflags.bits.hob.lbam  = 1;
 			r.iflags.bits.hob.lbah  = 1;
+			r.oflags.bits.lob.dev   = 1;
 			r.lob.command = ATA_OP_READ_NATIVE_MAX_EXT;
-			if (do_taskfile_cmd(fd, &r, 10)) {
+			r.lob.dev = 0x40;
+			if (do_taskfile_cmd(fd, &r, timeout_15secs)) { //timeout for pre-ACS3 case of do_set_max_sectors
 				err = errno;
 				perror (" READ_NATIVE_MAX_ADDRESS_EXT failed");
 			} else {
@@ -1339,16 +1334,19 @@ static __u64 do_get_native_max_sectors (int fd)
 				     	| ((r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal)) + 1;
 			}
 		} else {
-			r.iflags.bits.lob.dev = 1;
+			/* DEVICE (3:0) / LBA (27:24) "remap" does NOT apply in ATA Status Return */
+			r.iflags.bits.hob.lbal = 1;
 			r.lob.command = ATA_OP_READ_NATIVE_MAX;
-			if (do_taskfile_cmd(fd, &r, 0)) {
+			//bit 7:5 of DEVICE field is defined as "Obsolete"
+			if (do_taskfile_cmd(fd, &r, timeout_15secs)) { //timeout for pre-ACS3 case of do_set_max_sectors
 				err = errno;
 				perror (" READ_NATIVE_MAX_ADDRESS failed");
 			} else {
-				max = (((r.lob.dev & 0x0f) << 24) | (r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
+				max = (((r.hob.lbal & 0x0f) << 24) | (r.lob.lbah << 16) | (r.lob.lbam << 8) | r.lob.lbal) + 1;
 			}
 		}
 	}
+
 	errno = err;
 	return max;
 	
@@ -1714,45 +1712,40 @@ static int do_set_max_sectors (int fd, __u64 max_lba, int permanent)
 	if (!id)
 		exit(EIO);
 	
-	if((id[80]&0x400)==0x400){
-		//ACS3 supported
-		if ((max_lba >> 28) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
+	if (SUPPORTS_AMAX_ADDR(id)) {
+		/* ACS3 supported, no 28-bit variant defined in spec */
+		init_hdio_taskfile(&r, ATA_OP_GET_NATIVE_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
+		r.oflags.bits.lob.feat = 1;
+		r.lob.feat = 0x01; //SET ACCESSIBLE MAX ADDRESS EXT is 78h/0001h
+		//bit 6 of DEVICE field is defined as "N/A"
 
-			init_hdio_taskfile(&r, ATA_OP_GET_NATIVE_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
-			r.oflags.bits.lob.feat = 1;
-			r.lob.feat = 0x01;
-		} else {
-			init_hdio_taskfile(&r, ATA_OP_GET_NATIVE_MAX_EXT, RW_READ, LBA28_OK, max_lba, nsect, 0);
-			r.oflags.bits.lob.feat = 1; /*this ATA op requires feat == 0 */
-		}
-
+		/* No more "racey" in ACS3+AMAX case? */
 		if (do_taskfile_cmd(fd, &r, timeout_15secs)) {
 			err = errno;
-			perror(" SET_MAX_ADDRESS failed");
+			perror(" SET_ACCESSIBLE_MAX_ADDRESS_EXT failed");
 		}
-
-		return err;
-
-		}
-	else{
-		if ((max_lba >= lba28_limit) || (id && ((id[83] & 0xc400) == 0x4400) && (id[86] & 0x0400))) {
-		init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
 	} else {
-		init_hdio_taskfile(&r, ATA_OP_SET_MAX, RW_READ, LBA28_OK, max_lba, nsect, 0);
-		r.oflags.bits.lob.feat = 1;  /* this ATA op requires feat==0 */
+		if ((max_lba >= lba28_limit) || SUPPORTS_48BIT_ADDR(id)) {
+			init_hdio_taskfile(&r, ATA_OP_SET_MAX_EXT, RW_READ, LBA48_FORCE, max_lba, nsect, 0);
+			r.oflags.bits.lob.dev = 1;
+			r.lob.dev = 0x40;
+		} else {
+			init_hdio_taskfile(&r, ATA_OP_SET_MAX, RW_READ, LBA28_OK, max_lba, nsect, 0);
+			//bit 7:5 of DEVICE field is defined as "Obsolete"
+		}
+
+		/* spec requires that we do this immediately in front.. racey */
+		if (!do_get_native_max_sectors(fd))
+			return errno;
+
+		/* now set the new value */
+		if (do_taskfile_cmd(fd, &r, 0)) {
+			err = errno;
+			perror(" SET_MAX_ADDRESS(_EXT) failed");
+		}
 	}
 
-	/* spec requires that we do this immediately in front.. racey */
-	if (!do_get_native_max_sectors(fd))
-		return errno;
-
-	/* now set the new value */
-	if (do_taskfile_cmd(fd, &r, 0)) {
-		err = errno;
-		perror(" SET_MAX_ADDRESS failed");
-	}
 	return err;
-	}
 }
 
 static void usage_help (int clue, int rc)
@@ -1862,6 +1855,8 @@ static void security_help (int rc)
 	" --security-set-pass PASSWD  Lock drive, using password PASSWD:\n"
 	"                                  Use 'NULL' to set empty password.\n"
 	"                                  Drive gets locked if user-passwd is selected.\n"
+	" --security-prompt-for-password   Prompt user to enter the drive password.\n"
+	"\n"
 	" --security-unlock   PASSWD  Unlock drive.\n"
 	" --security-disable  PASSWD  Disable drive locking.\n"
 	" --security-erase    PASSWD  Erase a (locked) drive.\n"
@@ -2612,30 +2607,27 @@ void process_dev (char *devname)
 		}
 	}
 	if (get_native_max_sectors) {
-		__u64 visible, native;
 		get_identify_data(fd);
 		if (id) {
-			visible = get_lba_capacity(id);
-			native  = do_get_native_max_sectors(fd);
+			__u64 visible = get_lba_capacity(id);
+			__u64 native  = do_get_native_max_sectors(fd);
 			if (!native) {
 				err = errno;
 			} else {
 				printf(" max sectors   = %llu/%llu", visible, native);
 				if (visible < native){
-
-					if((id[80]&0x400)==0x400){
+					if (SUPPORTS_AMAX_ADDR(id)) {
 						printf(", ACCESSIBLE MAX ADDRESS enabled\n");
 						printf("Power cycle your device after every ACCESSIBLE MAX ADDRESS\n");
-
 					}
 					else
-					printf(", HPA is enabled\n");
+						printf(", HPA is enabled\n");
 				}
 				else if (visible == native){
-					if((id[80]&0x400)==0x400)
+					if (SUPPORTS_AMAX_ADDR(id))
 						printf(", ACCESSIBLE MAX ADDRESS disabled\n");
-				else
-					printf(", HPA is disabled\n");
+					else
+						printf(", HPA is disabled\n");
 				}
 				else {
 					__u16 *dco = get_dco_identify_data(fd, 1);
