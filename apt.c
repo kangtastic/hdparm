@@ -264,47 +264,8 @@ static int apt_jmicron_int_init(int fd)
 static int apt_jmicron_sg16(int fd, int rw, int dma, struct ata_tf *tf,
         void *data, unsigned int data_bytes, unsigned int timeout_secs)
 {
-	int res;
-	unsigned char regs[16];
 
-	memset(regs, 0, sizeof(tf));
-
-	res = apt_jmicron_int_sg(fd, rw, dma, tf, data, data_bytes, timeout_secs, 0);
-
-	if (res == -1) return res;
-
-	if ((res = apt_jmicron_int_get_registers(fd,
-	    (apt_data.jmicron.port == 0xa0 ? 0x8000 : 0x9000), regs, sizeof(regs))) == -1) {
-		return res;
-	}
-
-	tf->is_lba48  = 0;
-	tf->error     = regs[13];
-	tf->lob.nsect = regs[ 0];
-	tf->lob.lbal  = regs[ 6];
-	tf->lob.lbam  = regs[ 4];
-	tf->lob.lbah  = regs[10];
-	tf->dev       = regs[ 9];
-	tf->status    = regs[14];
-	tf->hob.feat  = 0;
-	tf->hob.nsect = 0;
-	tf->hob.lbal  = 0;
-	tf->hob.lbam  = 0;
-	tf->hob.lbah  = 0;
-
-	if (apt_data.verbose)
-		fprintf(stderr, "      ATA_%u stat=%02x err=%02x nsect=%02x lbal=%02x lbam=%02x lbah=%02x dev=%02x\n",
-				12, tf->status, tf->error, tf->lob.nsect, tf->lob.lbal, tf->lob.lbam, tf->lob.lbah, tf->dev);
-
-	if (tf->status & (ATA_STAT_ERR | ATA_STAT_DRQ)) {
-		if (apt_data.verbose) {
-			fprintf(stderr, "I/O error, ata_op=0x%02x ata_status=0x%02x ata_error=0x%02x\n",
-				tf->command, tf->status, tf->error);
-		}
-		errno = EIO;
-		return -1;
-	}
-	return 0;
+	return apt_jmicron_int_sg(fd, rw, dma, tf, data, data_bytes, timeout_secs, 0);
 }
 
 #else

@@ -1,3 +1,5 @@
+hdparm-9.54:
+	- Partial revert of Jmicron changes, from Jan Friesse.
 hdparm-9.53:
 	- Read Drive Capacity fixes from Iestyn Walters.
 	- SET MAX ADDRESS fixes from Tom Yan <tom.ty89@gmail.com>.
