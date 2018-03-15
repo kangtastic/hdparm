@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 #include <sys/ioctl.h>
 #include <linux/types.h>
 #include <linux/fs.h>

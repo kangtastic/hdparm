@@ -1,3 +1,5 @@
+hdparm-9.55:
+	- added #include <sys/sysmacros.h> for major()/minor() macros
 hdparm-9.54:
 	- Partial revert of Jmicron changes, from Jan Friesse.
 hdparm-9.53:

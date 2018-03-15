@@ -1,8 +1,9 @@
 Begin4
 Title:		hdparm
-Version:	9.54
-Entered-date:	2018-02-03
+Version:	9.55
+Entered-date:	2018-03-15
 Description:	hdparm - get/set hard disk parameters for Linux SATA/IDE drives.
+		v9.55 #include <sys/sysmacros.h>
 		v9.54 partial revert of JMicron changes.
 		v9.53 Read Drive Capacity fixes, SET MAX ADDRESS fixes, fwdownload fixes.
 		v9.52 added JMicron USB-SATA bridge support, courtesy Jan Friesse <jfriesse@gmail.com>.
@@ -128,7 +129,7 @@ Author:		mlord@pobox.com (Mark Lord)
 Maintained-by:	mlord@pobox.com (Mark Lord)
 Primary-site:	http://sourceforge.net/projects/hdparm/
 Alternate-site:	http://www.ibiblio.org/pub/Linux/system/hardware
-		137K hdparm-9.54.tar.gz
+		137K hdparm-9.55.tar.gz
 		7K hdparm.lsm
 Platforms:	Linux
 Copying-policy:	BSD License
