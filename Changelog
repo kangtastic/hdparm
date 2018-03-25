@@ -1,3 +1,6 @@
+hdparm-9.56:
+	- fixed byte order for --Istdout so that --Istdin can grok it
+	- added --Iraw for raw binary output of IDENTIFY data to a file
 hdparm-9.55:
 	- added #include <sys/sysmacros.h> for major()/minor() macros
 hdparm-9.54:

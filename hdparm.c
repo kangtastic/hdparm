@@ -2,7 +2,7 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2017 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.55"
+#define HDPARM_VERSION "v9.56"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -95,7 +95,7 @@ static int set_security   = 0;
 static int do_dco_freeze = 0, do_dco_restore = 0, do_dco_identify = 0, do_dco_setmax = 0;
 static unsigned int security_command = ATA_OP_SECURITY_UNLOCK;
 
-static char security_password[33], *fwpath;
+static char security_password[33], *fwpath, *raw_identify_path;
 
 static int do_sanitize = 0;
 static __u16 sanitize_feature = 0;
@@ -427,6 +427,7 @@ static void dmpstr (const char *prefix, unsigned int i, const char *s[], unsigne
 }
 
 static __u16 *id;
+
 #define SUPPORTS_ACS3(id) ((id)[80] & 0x400)
 #define SUPPORTS_AMAX_ADDR(id) (SUPPORTS_ACS3(id) && ((id)[119] & (1u << 8)))
 #define SUPPORTS_48BIT_ADDR(id) ((((id)[83] & 0xc400) == 0x4400) && ((id)[86] & 0x0400))
@@ -1137,23 +1138,23 @@ static int flush_wcache (int fd)
 	return err;
 }
 
-static void dump_sectors (__u16 *w, unsigned int count)
+static void dump_sectors (__u16 *w, unsigned int count, int raw)
 {
 	unsigned int i;
 
 	for (i = 0; i < (count*256/8); ++i) {
-#if 0
-		printf("%04x %04x %04x %04x %04x %04x %04x %04x\n",
-			w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
-		w += 8;
-#else
-		int word;
-		for (word = 0; word < 8; ++word) {
-			unsigned char *b = (unsigned char *)w++;
-			printf("%02x%02x", b[0], b[1]);
-			putchar(word == 7 ? '\n' : ' ');
+		if (raw) {
+			printf("%04x %04x %04x %04x %04x %04x %04x %04x\n",
+				w[0], w[1], w[2], w[3], w[4], w[5], w[6], w[7]);
+			w += 8;
+		} else {
+			int word;
+			for (word = 0; word < 8; ++word) {
+				unsigned char *b = (unsigned char *)w++;
+				printf("%02x%02x", b[0], b[1]);
+				putchar(word == 7 ? '\n' : ' ');
+			}
 		}
-#endif
 	}
 }
 
@@ -1210,7 +1211,7 @@ static __u16 *get_dco_identify_data (int fd, int quietly)
 			unsigned char *b = (unsigned char *)&dco[i];
 			dco[i] = b[0] | (b[1] << 8);	/* le16_to_cpu */
 		}
-		//dump_sectors(dco, 1);
+		//dump_sectors(dco, 1, 0);
 		return dco;
 	}
 }
@@ -1242,7 +1243,7 @@ do_dco_setmax_cmd (int fd)
 		}
 		if (verbose) {
 			printf("Original DCO:\n");
-			dump_sectors(dco, 1);
+			dump_sectors(dco, 1, 0);
 		}
 		// set the new MAXLBA to the requested sectors - 1
 		*maxlba = set_max_addr - 1;
@@ -1250,7 +1251,7 @@ do_dco_setmax_cmd (int fd)
 		dco[255] = (dco[255] & 0xFF) | ((__u16) dco_verify_checksum(dco) << 8);
 		if (verbose) {
 			printf("New DCO:\n");
-			dump_sectors(dco, 1);
+			dump_sectors(dco, 1, 0);
 		}
 
 	} else {
@@ -1679,7 +1680,7 @@ static int do_read_sector (int fd, __u64 lba, const char *devname)
 		perror("FAILED");
 	} else {
 		printf("succeeded\n");
-		dump_sectors(r->data, 1);
+		dump_sectors(r->data, 1, 0);
 	}
 	free(r);
 	return err;
@@ -1818,6 +1819,7 @@ static void usage_help (int clue, int rc)
 	" --fwdownload-modee-max  Download firmware using mode E (max-size segments) (EXTREMELY DANGEROUS)\n"
 	" --idle-immediate  Idle drive immediately\n"
 	" --idle-unload     Idle immediately and unload heads\n"
+  " --Iraw filename   Write raw binary identify data to the specfied file\n"
 	" --Istdin          Read identify data from stdin as ASCII hex\n"
 	" --Istdout         Write identify data to stdout as ASCII hex\n"
 	" --make-bad-sector Deliberately corrupt a sector directly on the media (VERY DANGEROUS)\n"
@@ -2533,10 +2535,31 @@ void process_dev (char *devname)
 	if (do_IDentity) {
 		get_identify_data(fd);
 		if (id) {
-			if (do_IDentity == 2)
-				dump_sectors(id, 1);
-			else
+			if (do_IDentity == 2) {
+				dump_sectors(id, 1, 1);
+			} else if (do_IDentity == 3) {
+				/* Write raw binary IDENTIFY DEVICE data to the specified file */
+				int rfd = open(raw_identify_path, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+				if (rfd == -1) {
+					err = errno;
+					perror(raw_identify_path);
+					exit(err);
+				}
+				err = write(rfd, id, 0x200);
+				if (err == -1) {
+					err = errno;
+					perror(raw_identify_path);
+					exit(err);
+				} else if (err != 0x200) {
+					fprintf(stderr, "Error writing IDENTIFY DEVICE data to \"%s\"\n", raw_identify_path);
+					exit(EIO);
+				} else {
+					fprintf(stderr, "Wrote IDENTIFY DEVICE data to \"%s\"\n", raw_identify_path);
+					close(rfd);
+				}
+      			} else {
 				identify(fd, (void *)id);
+			}
 		}
 	}
 	if (get_lookahead) {
@@ -3174,6 +3197,9 @@ get_longarg (void)
 		get_u64_parm(0, 0, NULL, &read_sector_addr, 0, lba_limit, name, lba_emsg);
 	} else if (0 == strcasecmp(name, "Istdout")) {
 		do_IDentity = 2;
+	} else if (0 == strcasecmp(name, "Iraw")) {
+		do_IDentity = 3;
+		get_filename_parm(&raw_identify_path, name);
 	} else if (0 == strcasecmp(name, "security-mode")) {
 		if (argc && isalpha(**argv)) {
 			argp = *argv++, --argc;
