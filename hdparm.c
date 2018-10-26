@@ -2,7 +2,7 @@
  * hdparm.c - Command line interface to get/set hard disk parameters.
  *          - by Mark Lord (C) 1994-2018 -- freely distributable.
  */
-#define HDPARM_VERSION "v9.57"
+#define HDPARM_VERSION "v9.58"
 
 #define _LARGEFILE64_SOURCE /*for lseek64*/
 #define _BSD_SOURCE	/* for strtoll() */
@@ -1599,7 +1599,7 @@ int get_current_sector_size (int fd)
 	unsigned int words = 256;
 
 	get_identify_data(fd);
-	if((id[106] & 0xc000) == 0x4000) {
+	if(id && (id[106] & 0xc000) == 0x4000) {
 		if (id[106] & (1<<12))
 			words = (id[118] << 16) | id[117];
 	}

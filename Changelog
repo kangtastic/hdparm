@@ -1,3 +1,5 @@
+hdparm-9.58:
+	- fix bug from 9.57 whereby -I for non-ATA might segfault.
 hdparm-9.57:
 	- added --set-sector-size flag to change logical sector size.
 	- fixed handling of non-512 byte logical sectors in several places.
